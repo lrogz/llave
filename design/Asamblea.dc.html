@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cuota extraordinaria y votación</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&amp;family=DM+Sans:wght@400;500;600&amp;family=DM+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B6B53}a:hover{color:#084C3B}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #EEF1EF; font-family: 'DM Sans', sans-serif; color: #14201C; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+  <header style="display: flex; align-items: center; gap: 10px">
+    <a href="Residente.dc.html" aria-label="Volver" style="width: 44px; height: 44px; border-radius: 12px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#14201C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+    </a>
+    <div style="display: flex; flex-direction: column">
+      <span style="font-size: 12px; color: #4E5C56; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600">Asamblea extraordinaria · 16 oct</span>
+      <span style="font-size: 14px; font-weight: 600">Condominio Arboleda</span>
+    </div>
+  </header>
+
+  <section style="background: #FFFFFF; border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15">Impermeabilización de azoteas, torres A, B y C</h1>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <div style="background: #EEF1EF; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 12px; color: #4E5C56">Costo total</span>
+        <span style="font-family: 'DM Mono', monospace; font-size: 18px">$384,000</span>
+      </div>
+      <div style="background: #E3F4EE; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 12px; color: #0B5A46">Tu aportación</span>
+        <span style="font-family: 'DM Mono', monospace; font-size: 18px; color: #0B5A46">$3,200</span>
+      </div>
+    </div>
+    <span style="font-size: 13px; color: #4E5C56">Prorrateo por indiviso (0.83%) · 4 pagos mensuales de $800</span>
+    <div style="border-top: 1px solid #E6ECE9; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+      <span style="font-weight: 700">3 cotizaciones</span>
+      <div style="display: flex; justify-content: space-between"><span>Impermeabilizantes del Bajío <span style="background: #E3F4EE; color: #0B5A46; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700">Recomendada</span></span><span style="font-family: 'DM Mono', monospace">$384,000</span></div>
+      <div style="display: flex; justify-content: space-between; color: #4E5C56"><span>Techos Querétaro</span><span style="font-family: 'DM Mono', monospace">$412,500</span></div>
+      <div style="display: flex; justify-content: space-between; color: #4E5C56"><span>ProSellos</span><span style="font-family: 'DM Mono', monospace">$439,000</span></div>
+      <a href="#" style="font-size: 13px; font-weight: 600">Ver PDFs y fotos del daño</a>
+    </div>
+  </section>
+
+  <section aria-label="Quórum" style="background: #FFFFFF; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; justify-content: space-between; font-size: 14px"><span style="font-weight: 700">Quórum por indiviso</span><span><span style="font-family: 'DM Mono', monospace">68%</span> de 75% requerido</span></div>
+    <div style="position: relative; height: 10px; border-radius: 5px; background: #E2E8E5">
+      <div style="width: 68%; height: 10px; border-radius: 5px; background: #0B6B53"></div>
+      <div style="position: absolute; left: 75%; top: -4px; width: 2px; height: 18px; background: #14201C"></div>
+    </div>
+    <span style="font-size: 12px; color: #4E5C56">Porcentaje según el reglamento del condominio</span>
+  </section>
+
+  <section aria-label="Tu voto" style="display: flex; flex-direction: column; gap: 10px">
+    <span style="font-size: 14px; font-weight: 700">Tu voto</span>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <sc-for list="{{ opciones }}" as="op" hint-placeholder-count="3">
+        <button type="button" onClick="{{ op.pick }}" aria-pressed="{{ op.pressed }}" style="{{ op.estilo }}">{{ op.label }}</button>
+      </sc-for>
+    </div>
+  </section>
+
+  <button type="button" onClick="{{ confirmar }}" style="{{ estiloConfirmar }}">{{ textoConfirmar }}</button>
+  <span style="font-size: 12px; color: #4E5C56; text-align: center; margin-top: -6px">Tu voto queda registrado en el acta con fecha y hora</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { voto: null, enviado: false };
+  }
+  renderVals() {
+    const base = 'font: inherit; font-size: 14px; font-weight: 700; min-height: 52px; border-radius: 12px; cursor: pointer; ';
+    const labels = [['favor', 'A favor'], ['contra', 'En contra'], ['abst', 'Abstención']];
+    const opciones = labels.map(([id, label]) => {
+      const sel = this.state.voto === id;
+      return {
+        label,
+        pressed: sel ? 'true' : 'false',
+        estilo: base + (sel ? 'border: 2px solid #0B6B53; background: #E3F4EE; color: #0B5A46;' : 'border: 1px solid #C3CEC9; background: #FFFFFF; color: #14201C;'),
+        pick: () => this.setState({ voto: id, enviado: false })
+      };
+    });
+    const listo = this.state.voto !== null;
+    return {
+      opciones,
+      confirmar: () => { if (listo) this.setState({ enviado: true }); },
+      textoConfirmar: this.state.enviado ? 'Voto registrado ✓' : 'Confirmar voto',
+      estiloConfirmar: 'font: inherit; font-size: 15px; font-weight: 700; min-height: 52px; border-radius: 12px; border: 0; cursor: pointer; margin-top: auto; ' + (this.state.enviado ? 'background: #14201C; color: #3FD3A5;' : (listo ? 'background: #0B6B53; color: #FFFFFF;' : 'background: #C9D3CF; color: #3D4A45;'))
+    };
+  }
+}
+</script>
+</body>
+</html>

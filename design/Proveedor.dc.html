@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Proveedor: cotiza o agenda visita</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&amp;family=DM+Sans:wght@400;500;600;700&amp;family=DM+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B6B53}a:hover{color:#084C3B}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #14201C; font-family: 'DM Sans', sans-serif; color: #FFFFFF; padding: 22px 20px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+  <header style="display: flex; flex-direction: column; gap: 4px">
+    <span style="font-size: 12px; color: #3FD3A5; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em">Nueva solicitud · Humedad</span>
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Mancha de humedad en recámara</h1>
+    <span style="font-size: 13px; color: #B9C8C1">Jurica · cotizar antes del vie 10 oct</span>
+    <span style="align-self: flex-start; margin-top: 4px; background: #1E2D28; color: #E7EEEA; border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 600">Te lo envió [Administradora] por WhatsApp · sin cuenta ni app</span>
+  </header>
+
+  <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px">
+    <div style="height: 150px; border-radius: 12px; background: #2C3A35; position: relative; display: flex; align-items: center; justify-content: center">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+      <span style="position: absolute; bottom: 8px; right: 8px; background: #000000; color: #FFFFFF; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 6px">0:12</span>
+    </div>
+    <div style="display: grid; grid-template-rows: 1fr 1fr; gap: 8px">
+      <div style="border-radius: 12px; background: #2C3A35; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #B9C8C1">[Foto]</div>
+      <div style="border-radius: 12px; background: #2C3A35; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #B9C8C1">[Foto]</div>
+    </div>
+  </div>
+  <p style="margin: 0; font-size: 14px; line-height: 1.45; color: #E7EEEA">"Mancha que crece en la pared de la recámara del fondo." Disponible: mañanas y sábado.</p>
+
+  <div role="group" aria-label="Cómo quieres responder" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; background: #1E2D28; border-radius: 12px; padding: 4px">
+    <button type="button" onClick="{{ verCotizar }}" aria-pressed="{{ pCotizar }}" style="{{ eCotizar }}">Cotizar con lo que veo</button>
+    <button type="button" onClick="{{ verVisita }}" aria-pressed="{{ pVisita }}" style="{{ eVisita }}">Visita para cotizar</button>
+  </div>
+
+  <sc-if value="{{ esCotizar }}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: #B9C8C1">
+        Precio total (MXN)
+        <input type="text" value="$3,800" style="font-family: 'DM Mono', monospace; font-size: 22px; min-height: 48px; border: 0; border-radius: 12px; padding: 0 14px; background: #FFFFFF; color: #14201C">
+      </label>
+      <label style="display: flex; gap: 10px; align-items: center; font-size: 14px; min-height: 32px">
+        <input type="checkbox" checked style="width: 20px; height: 20px; accent-color: #3FD3A5">
+        Incluye materiales e impermeabilizante
+      </label>
+      <span style="font-size: 13px; font-weight: 700; color: #B9C8C1">Fechas en que puedo hacerlo</span>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <sc-for list="{{ fechas }}" as="f" hint-placeholder-count="3">
+          <button type="button" onClick="{{ f.pick }}" aria-pressed="{{ f.pressed }}" style="{{ f.estilo }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ esVisita }}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 14px; line-height: 1.45; color: #E7EEEA">Necesito ver de dónde viene el agua antes de dar precio. Elige un horario dentro de la disponibilidad del inquilino:</span>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <sc-for list="{{ visitas }}" as="v" hint-placeholder-count="3">
+          <button type="button" onClick="{{ v.pick }}" aria-pressed="{{ v.pressed }}" style="{{ v.estilo }}">{{ v.label }}</button>
+        </sc-for>
+      </div>
+      <span style="font-size: 13px; color: #B9C8C1">Costo de visita: $0 si te quedas con el trabajo</span>
+    </div>
+  </sc-if>
+
+  <button type="button" onClick="{{ enviar }}" style="{{ eEnviar }}">{{ tEnviar }}</button>
+  <a href="#" style="text-align: center; font-size: 13px; color: #B9C8C1; margin-top: -4px">No es mi especialidad</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { modo: 'cotizar', fecha: 'sab', visita: 'jue', enviado: false };
+  }
+  chip(sel) {
+    return 'font: inherit; font-size: 13px; min-height: 44px; padding: 0 14px; border-radius: 10px; cursor: pointer; ' + (sel ? 'font-weight: 700; border: 2px solid #3FD3A5; background: #1E3B32; color: #FFFFFF;' : 'font-weight: 600; border: 1px solid #3D4D47; background: transparent; color: #E7EEEA;');
+  }
+  renderVals() {
+    const tab = (sel) => 'font: inherit; font-size: 13px; font-weight: 700; min-height: 44px; border-radius: 9px; border: 0; cursor: pointer; ' + (sel ? 'background: #3FD3A5; color: #14201C;' : 'background: transparent; color: #E7EEEA;');
+    const esCotizar = this.state.modo === 'cotizar';
+    const fechas = [['sab', 'Sáb 11 oct'], ['lun', 'Lun 13 oct'], ['mar', 'Mar 14 oct']].map(([id, label]) => ({
+      label, pressed: this.state.fecha === id ? 'true' : 'false', estilo: this.chip(this.state.fecha === id),
+      pick: () => this.setState({ fecha: id, enviado: false })
+    }));
+    const visitas = [['jue', 'Jue 9 · 10:00'], ['vie', 'Vie 10 · 9:00'], ['sab', 'Sáb 11 · 11:00']].map(([id, label]) => ({
+      label, pressed: this.state.visita === id ? 'true' : 'false', estilo: this.chip(this.state.visita === id),
+      pick: () => this.setState({ visita: id, enviado: false })
+    }));
+    const enviado = this.state.enviado;
+    return {
+      esCotizar, esVisita: !esCotizar,
+      pCotizar: esCotizar ? 'true' : 'false', pVisita: esCotizar ? 'false' : 'true',
+      eCotizar: tab(esCotizar), eVisita: tab(!esCotizar),
+      verCotizar: () => this.setState({ modo: 'cotizar', enviado: false }),
+      verVisita: () => this.setState({ modo: 'visita', enviado: false }),
+      fechas, visitas,
+      enviar: () => this.setState({ enviado: true }),
+      tEnviar: enviado ? (esCotizar ? 'Cotización enviada ✓' : 'Visita agendada ✓') : (esCotizar ? 'Enviar cotización' : 'Agendar visita'),
+      eEnviar: 'font: inherit; font-size: 15px; font-weight: 700; min-height: 52px; border-radius: 12px; border: 0; cursor: pointer; margin-top: auto; ' + (enviado ? 'background: #1E3B32; color: #3FD3A5;' : 'background: #3FD3A5; color: #14201C;')
+    };
+  }
+}
+</script>
+</body>
+</html>

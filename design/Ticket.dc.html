@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Ticket y cotizaciones</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&amp;family=DM+Sans:wght@400;500;600;700&amp;family=DM+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF1EF}
+a{color:#0B6B53}a:hover{color:#084C3B}
+</style>
+</helmet>
+<div style="min-height: 980px; background: #EEF1EF; font-family: 'DM Sans', sans-serif; color: #14201C; display: flex; flex-wrap: wrap">
+  <nav aria-label="Secciones" style="flex: 1 1 220px; max-width: 250px; min-width: 200px; background: #14201C; color: #E7EEEA; padding: 28px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 10px">
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: #3FD3A5; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14201C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M11 12l9-9M17 6l3 3"></path></svg>
+      </div>
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 22px; color: #FFFFFF">Llave</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <a href="Main.dc.html" style="text-decoration: none; color: #C9D6D0; border-radius: 10px; padding: 11px 12px; font-size: 14px">Propiedades</a>
+      <a href="Ticket.dc.html" style="text-decoration: none; color: #14201C; background: #3FD3A5; border-radius: 10px; padding: 11px 12px; font-weight: 700; font-size: 14px">Tickets</a>
+      <a href="Bandeja.dc.html" style="text-decoration: none; color: #C9D6D0; border-radius: 10px; padding: 11px 12px; font-size: 14px">Bandeja</a>
+      <a href="#" style="text-decoration: none; color: #C9D6D0; border-radius: 10px; padding: 11px 12px; font-size: 14px">Proveedores</a>
+      <a href="Pagos.dc.html" style="text-decoration: none; color: #C9D6D0; border-radius: 10px; padding: 11px 12px; font-size: 14px">Pagos y servicios</a>
+      <a href="#" style="text-decoration: none; color: #C9D6D0; border-radius: 10px; padding: 11px 12px; font-size: 14px">Documentos</a>
+    </div>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px 40px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+    <a href="Main.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">‹ Arboleda · Torre A 105</a>
+    <header style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-start">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <span style="background: #FDEBDD; color: #8A3A08; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700">Urgente</span>
+          <span style="background: #E8EEFB; color: #2A4A93; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700">Plomería</span>
+          <span style="background: #FFFFFF; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600">#T-0148</span>
+        </div>
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -0.02em">Fuga en lavabo del baño principal</h1>
+        <span style="font-size: 14px; color: #4E5C56">Reportó Luis Ortega (inquilino) por WhatsApp · lunes 6 oct, 8:42</span>
+      </div>
+      <div style="background: #FFFFFF; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 200px">
+        <span style="font-size: 12px; color: #4E5C56; font-weight: 600">¿Quién paga?</span>
+        <span style="font-weight: 700">Propietaria · Marta Ríos</span>
+        <span style="font-size: 12px; color: #4E5C56">Desgaste normal, cláusula 9 del contrato</span>
+      </div>
+    </header>
+
+    <ol aria-label="Avance" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+      <li style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700"><span style="height: 6px; border-radius: 3px; background: #0B6B53"></span>Reportado</li>
+      <li style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700"><span style="height: 6px; border-radius: 3px; background: #0B6B53"></span>Cotizado</li>
+      <li style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: #0B5A46"><span style="height: 6px; border-radius: 3px; background: #3FD3A5"></span>Aprobación</li>
+      <li style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #4E5C56"><span style="height: 6px; border-radius: 3px; background: #D5DDD9"></span>En proceso</li>
+      <li style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #4E5C56"><span style="height: 6px; border-radius: 3px; background: #D5DDD9"></span>Resuelto</li>
+    </ol>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <section aria-label="Evidencia" style="flex: 1 1 280px; min-width: 0; background: #FFFFFF; border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 700">Evidencia</h2>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <div style="height: 110px; border-radius: 10px; background: #D8E3DE; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #4E5C56">[Foto 1]</div>
+          <div style="height: 110px; border-radius: 10px; background: #D8E3DE; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #4E5C56">[Video 0:14]</div>
+        </div>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5">"Gotea debajo del lavabo, ya se hinchó el mueble."</p>
+        <div style="border-top: 1px solid #E6ECE9; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #4E5C56">
+          <span>8:42 · Ticket creado desde WhatsApp</span>
+          <span>9:10 · Enviado a tus 2 plomeros de siempre y a la red Llave</span>
+          <span>14:30 · 3 cotizaciones recibidas (1 subida por ti)</span>
+        </div>
+      </section>
+
+      <section aria-label="Cotizaciones" style="flex: 2.4 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap">
+          <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 22px; font-weight: 700">Compara cotizaciones</h2>
+          <span style="font-size: 13px; color: #4E5C56">Elige una y envíala al dueño para aprobar</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px">
+          <button type="button" style="font: inherit; font-size: 14px; font-weight: 700; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #0B6B53; background: #FFFFFF; color: #0B5A46; cursor: pointer; display: flex; align-items: center; gap: 8px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B5A46" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"></path></svg>
+            Mandar a mi proveedor por WhatsApp
+          </button>
+          <button type="button" style="font: inherit; font-size: 14px; font-weight: 700; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #C3CEC9; background: #FFFFFF; color: #14201C; cursor: pointer; display: flex; align-items: center; gap: 8px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14201C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>
+            Subir cotización (PDF, foto o nota de voz)
+          </button>
+          <button type="button" style="font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: transparent; color: #0B5A46; cursor: pointer">+ Pedir a la red Llave</button>
+        </div>
+        <span style="font-size: 13px; color: #4E5C56; margin-top: -4px">Tu proveedor recibe un link con las fotos y el video; responde sin descargar nada ni crear cuenta.</span>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px">
+          <sc-for list="{{ proveedores }}" as="p" hint-placeholder-count="3">
+            <button type="button" onClick="{{ p.pick }}" aria-pressed="{{ p.pressed }}" style="{{ p.estilo }}">
+              <span style="display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%">
+                <span style="font-weight: 700; font-size: 15px; text-align: left">{{ p.nombre }}</span>
+                <span style="{{ p.radioEstilo }}"></span>
+              </span>
+              <span style="display: flex; gap: 6px; flex-wrap: wrap">
+                <span style="{{ p.etiquetaEstilo }}">{{ p.etiqueta }}</span>
+                <span style="{{ p.fuenteEstilo }}">{{ p.fuente }}</span>
+              </span>
+              <span style="font-family: 'DM Mono', monospace; font-size: 26px; font-weight: 500">{{ p.precio }}</span>
+              <span style="display: flex; flex-direction: column; gap: 6px; width: 100%; font-size: 13px; border-top: 1px solid #E6ECE9; padding-top: 10px">
+                <span style="display: flex; justify-content: space-between"><span style="color: #4E5C56">Calificación</span><span style="font-weight: 700">{{ p.calif }}</span></span>
+                <span style="display: flex; justify-content: space-between"><span style="color: #4E5C56">Puede ir</span><span style="font-weight: 700">{{ p.cuando }}</span></span>
+                <span style="display: flex; justify-content: space-between"><span style="color: #4E5C56">Garantía</span><span style="font-weight: 700">{{ p.garantia }}</span></span>
+                <span style="display: flex; justify-content: space-between"><span style="color: #4E5C56">Trabajos contigo</span><span style="font-weight: 700">{{ p.trabajos }}</span></span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="background: #14201C; color: #FFFFFF; border-radius: 16px; padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between">
+          <span style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 13px; color: #B9C8C1">Seleccionada</span>
+            <span style="font-weight: 700; font-size: 16px">{{ resumen }}</span>
+          </span>
+          <button type="button" onClick="{{ enviar }}" style="{{ estiloEnviar }}">{{ textoEnviar }}</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'raul', enviado: false };
+  }
+  renderVals() {
+    const datos = [
+      { id: 'raul', nombre: 'Raúl G. Plomería', precio: '$1,450', etiqueta: 'Mejor calificado', fuente: 'Tu proveedor', propio: true, calif: '4.9 · 12 trabajos tuyos', cuando: 'Jue 9, 10:00', garantia: '90 días', trabajos: '12' },
+      { id: 'hidro', nombre: 'Hidroservicios QRO', precio: '$1,180', etiqueta: 'Mejor precio', fuente: 'Red Llave', propio: false, calif: '4.3 · 15 reseñas', cuando: 'Lun 13', garantia: '30 días', trabajos: '2' },
+      { id: 'fix', nombre: 'Don Memo (subida por ti)', precio: '$1,600', etiqueta: 'PDF por WhatsApp', fuente: 'Tu proveedor', propio: true, calif: 'Sin calificar aún', cuando: 'Mañana, 16:00', garantia: '30 días', trabajos: '0' }
+    ];
+    const elegido = datos.find((d) => d.id === this.state.sel);
+    const proveedores = datos.map((d) => {
+      const s = d.id === this.state.sel;
+      return {
+        nombre: d.nombre, precio: d.precio, etiqueta: d.etiqueta, fuente: d.fuente, calif: d.calif,
+        fuenteEstilo: 'border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; ' + (d.propio ? 'background: #14201C; color: #FFFFFF;' : 'background: #E8EEFB; color: #2A4A93;'), cuando: d.cuando, garantia: d.garantia, trabajos: d.trabajos,
+        pressed: s ? 'true' : 'false',
+        estilo: 'font: inherit; color: #14201C; text-align: left; cursor: pointer; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; ' + (s ? 'background: #FFFFFF; border: 2px solid #0B6B53; box-shadow: 0 0 0 4px #D4F0E6;' : 'background: #FFFFFF; border: 2px solid transparent;'),
+        radioEstilo: 'width: 18px; height: 18px; border-radius: 50%; flex: none; box-sizing: border-box; ' + (s ? 'border: 6px solid #0B6B53;' : 'border: 2px solid #9AA8A2;'),
+        etiquetaEstilo: 'border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; ' + (s ? 'background: #E3F4EE; color: #0B5A46;' : 'background: #EEF1EF; color: #3D4A45;'),
+        pick: () => this.setState({ sel: d.id, enviado: false })
+      };
+    });
+    return {
+      proveedores,
+      resumen: elegido.nombre + ' · ' + elegido.precio + ' · ' + elegido.cuando,
+      enviar: () => this.setState({ enviado: true }),
+      textoEnviar: this.state.enviado ? 'Enviado a Marta Ríos ✓' : 'Enviar al dueño para aprobar',
+      estiloEnviar: 'font: inherit; font-size: 15px; font-weight: 700; min-height: 48px; padding: 0 20px; border-radius: 12px; border: 0; cursor: pointer; ' + (this.state.enviado ? 'background: #1E2D28; color: #3FD3A5;' : 'background: #3FD3A5; color: #14201C;')
+    };
+  }
+}
+</script>
+</body>
+</html>
