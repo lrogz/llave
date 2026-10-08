@@ -1,7 +1,12 @@
+import Link from "next/link";
+import { Suspense } from "react";
 import { connection } from "next/server";
+import { Cargando, Menu } from "@/components/Menu";
+import { Boton } from "@/components/Boton";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseConfigurado } from "@/lib/supabase/config";
-import { agregarPropiedad, crearOrganizacion, salir } from "./actions";
+import { pesos } from "@/lib/datos";
+import { agregarPropiedad, crearOrganizacion } from "./actions";
 
 type Propiedad = {
   id: string;
@@ -28,12 +33,17 @@ const TIPOS = [
   ["otro", "Otro"],
 ] as const;
 
-const pesos = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
-
-export default async function Inicio() {
-  await connection(); // siempre se arma por request: depende de la sesión
+export default function Inicio() {
   if (!supabaseConfigurado) return <Configurar />;
+  return (
+    <Suspense fallback={<Cargando />}>
+      <Contenido />
+    </Suspense>
+  );
+}
 
+async function Contenido() {
+  await connection(); // depende de la sesión: siempre por request
   const supabase = await createClient();
   const {
     data: { user },
@@ -60,7 +70,7 @@ export default async function Inicio() {
 
   return (
     <div className="flex flex-1 flex-wrap bg-fondo">
-      <Menu nombreOrg={org?.nombre ?? ""} />
+      <Menu activo="Propiedades" nombreOrg={org?.nombre ?? ""} />
 
       <main className="min-w-0 flex-[999_1_560px] px-5 py-8 sm:px-10">
         <header className="flex flex-wrap items-end justify-between gap-4">
@@ -77,7 +87,7 @@ export default async function Inicio() {
             const n = abiertos(p);
             const estado = ESTADOS[p.estado];
             return (
-              <article key={p.id} className="flex flex-col overflow-hidden rounded-2xl bg-white">
+              <Link key={p.id} href={`/propiedades/${p.id}`} className="flex flex-col overflow-hidden rounded-2xl bg-white hover:ring-2 hover:ring-verde/30">
                 <div className="flex h-24 items-end justify-between bg-[#D8E3DE] px-3 py-2.5">
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold capitalize">
                     {p.tipo.replace("_", " ")}
@@ -98,7 +108,7 @@ export default async function Inicio() {
                     {p.renta_mensual != null && <span className="font-mono">{pesos.format(p.renta_mensual)}</span>}
                   </div>
                 </div>
-              </article>
+              </Link>
             );
           })}
 
@@ -109,7 +119,8 @@ export default async function Inicio() {
             <input type="hidden" name="organizacion_id" value={membresia.organizacion_id} />
             <h2 className="font-bold">Agregar propiedad</h2>
             <Campo nombre="nombre" etiqueta="Nombre" placeholder="Casa 14, Jurica" requerido />
-            <Campo nombre="direccion" etiqueta="Dirección" placeholder="Calle, número, colonia" />
+            <Campo nombre="direccion" etiqueta="Calle y número" placeholder="Paseo de Jurica 14" />
+            <Campo nombre="colonia" etiqueta="Colonia" placeholder="Jurica" />
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Tipo
               <select name="tipo" className="min-h-11 rounded-xl border border-borde bg-white px-3 font-normal">
@@ -121,55 +132,11 @@ export default async function Inicio() {
               </select>
             </label>
             <Campo nombre="renta" etiqueta="Renta mensual" placeholder="$18,000" />
-            <button type="submit" className="min-h-11 rounded-xl bg-verde font-bold text-white">
-              + Agregar
-            </button>
+            <Boton enviando="Agregando…">+ Agregar</Boton>
           </form>
         </section>
       </main>
     </div>
-  );
-}
-
-function Menu({ nombreOrg }: { nombreOrg: string }) {
-  const items = ["Propiedades", "Tickets", "Bandeja", "Proveedores", "Pagos y servicios", "Documentos"];
-  return (
-    <nav aria-label="Secciones" className="flex max-w-64 min-w-52 flex-[1_1_220px] flex-col gap-7 bg-tinta px-4 py-7 text-[#C9D6D0]">
-      <div className="flex items-center gap-2.5 px-2.5">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-menta">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14201C" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="8" cy="15" r="4" />
-            <path d="M11 12l9-9M17 6l3 3" />
-          </svg>
-        </span>
-        <span className="font-display text-2xl font-bold text-white">Llave</span>
-      </div>
-      <ul className="flex flex-col gap-1 text-sm">
-        {items.map((item, i) => (
-          <li key={item}>
-            <span
-              className={
-                i === 0
-                  ? "block rounded-xl bg-menta px-3 py-3 font-bold text-tinta"
-                  : "block rounded-xl px-3 py-3"
-              }
-              aria-current={i === 0 ? "page" : undefined}
-            >
-              {item}
-              {i > 0 && <span className="ml-2 text-xs text-[#7F918A]">pronto</span>}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-auto flex flex-col gap-2 px-2.5 text-sm">
-        <span className="font-semibold text-white">{nombreOrg}</span>
-        <form action={salir}>
-          <button type="submit" className="text-[#A9BAB2] underline">
-            Salir
-          </button>
-        </form>
-      </div>
-    </nav>
   );
 }
 
@@ -210,9 +177,9 @@ function CrearOrganizacion({ email }: { email: string }) {
           placeholder="Administraciones Jurica"
           className="mt-6 min-h-12 w-full rounded-xl border border-borde px-4 outline-none focus:border-verde"
         />
-        <button type="submit" className="mt-3 min-h-12 w-full rounded-xl bg-verde font-bold text-white">
+        <Boton enviando="Creando…" className="mt-3 w-full">
           Empezar
-        </button>
+        </Boton>
       </form>
     </main>
   );
@@ -224,9 +191,9 @@ function Configurar() {
       <div className="w-full max-w-lg rounded-3xl bg-white p-8">
         <h1 className="font-display text-3xl font-bold tracking-tight">Falta conectar Supabase</h1>
         <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm">
-          <li>Corre <code>supabase/migrations/…_esquema_inicial.sql</code> en el SQL Editor de tu proyecto.</li>
+          <li>Corre los archivos de <code>supabase/migrations/</code>, en orden, en el SQL Editor de tu proyecto.</li>
           <li>
-            Copia <code>.env.example</code> a <code>.env.local</code> y llena la URL y la llave publicable.
+            Copia <code>.env.example</code> a <code>.env.local</code> y llena la URL, la llave publicable y la service_role.
           </li>
           <li>
             Reinicia con <code>npm run dev</code>.

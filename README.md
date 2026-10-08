@@ -4,39 +4,67 @@
 
 Herramienta para quien administra propiedades en México (y para quien apenas empieza): cartera visual, reportes con fotos y video, cotizaciones de tus proveedores de siempre o de la red, aprobación del dueño, bandeja única de WhatsApp, cobro de rentas y servicios al corriente.
 
-## El flujo central
+## El flujo central (ya funciona)
 
-1. **Reporte:** el inquilino escanea el QR de la casa o escribe por WhatsApp; sube fotos y video.
-2. **Cotización:** mandas el link a tus proveedores de siempre (sin cuenta ni app) o subes tú la cotización (PDF, foto o nota de voz). La red Llave es opcional.
-3. **Comparación:** precio, calificación, fecha, garantía e historial lado a lado.
-4. **Aprobación:** el dueño aprueba desde un link.
-5. **Cierre:** fotos antes/después, calificación y gasto registrado en la propiedad.
+1. **Reporte:** el inquilino escanea el QR de la casa, elige el tipo de problema, toma fotos o graba video y marca cuándo pueden entrar. Sin cuenta ni app.
+2. **Cotización:** desde el ticket mandas un link por WhatsApp a tus proveedores de siempre, o subes tú la cotización que te llegó (PDF, foto o nota de voz).
+3. **Proveedor:** ve fotos y video y elige: cotizar con lo que ve (precio, materiales, garantía, fechas), agendar visita para cotizar, o "no es mi especialidad".
+4. **Comparación:** cotizaciones lado a lado con *Mejor precio*, *Más rápido* y *Mejor calificado*.
+5. **Aprobación:** eliges una, defines quién paga y el dueño aprueba o rechaza desde un link. Si tienes su autorización, puedes aprobar tú.
+6. **Cierre:** marcas resuelto y calificas; el proveedor suma el trabajo y la calificación. El inquilino ve el avance en su link.
+
+| Pantalla | Ruta | Quién la usa |
+| --- | --- | --- |
+| Propiedades | `/` | Administradora |
+| Ficha con QR imprimible | `/propiedades/[id]` | Administradora |
+| Tickets | `/tickets` | Administradora |
+| Ticket y comparación | `/tickets/[id]` | Administradora |
+| Reportar un problema | `/r/[codigo]` | Inquilino (desde el QR) |
+| Avance del reporte | `/t/[token]` | Inquilino |
+| Cotizar o agendar visita | `/c/[token]` | Proveedor |
+| Aprobar cotización | `/a/[token]` | Dueño |
 
 ## Qué hay en este repo
 
 | Carpeta | Contenido |
 | --- | --- |
-| `src/` | App en Next.js 16 + Supabase: acceso con link mágico, alta de administradora y cartera de propiedades |
-| `supabase/migrations/` | Esquema completo de la base de datos con seguridad por administradora (RLS) |
+| `src/` | App en Next.js 16 + Supabase |
+| `supabase/migrations/` | Esquema de la base de datos con seguridad por administradora (RLS) |
 | `design/` | Pantallas del mockup (formato del canvas de diseño de Claude; no se abren solas en el navegador) |
 
 ## Poner en marcha
 
 ### 1. Base de datos (Supabase)
 
-1. Crea un proyecto nuevo en [supabase.com](https://supabase.com).
-2. Abre **SQL Editor**, pega todo el archivo `supabase/migrations/20261007120000_esquema_inicial.sql` y dale **Run**. Córrelo una sola vez.
+1. Crea un proyecto en [supabase.com](https://supabase.com).
+2. En **SQL Editor** corre, en orden y una sola vez cada uno:
+   1. `supabase/migrations/20261007120000_esquema_inicial.sql`
+   2. `supabase/migrations/20261008040000_folio_por_administradora.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
 
 ```bash
-cp .env.example .env.local   # llena URL y llave publicable (Project Settings › API)
+cp .env.example .env.local
 npm install
 npm run dev                  # http://localhost:3000
 ```
 
-Nunca pongas la llave `service_role` en `.env.local` del navegador ni la subas al repo.
+Variables (Supabase › Project Settings › API):
+
+| Variable | Para qué |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Llave publicable (o la anon) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor. La usan las páginas por link (`/r`, `/t`, `/c`, `/a`), siempre filtrando por token. **Nunca** le pongas prefijo `NEXT_PUBLIC_` ni la subas al repo. |
+| `NEXT_PUBLIC_SITE_URL` | Tu dominio público (para los links de WhatsApp). En local se detecta solo. |
+
+## Seguridad
+
+- Cada administradora solo ve sus datos (RLS con `es_miembro` / `es_admin`), también en archivos: cada una solo sube y lee en su carpeta del bucket `llave`.
+- Inquilinos, dueños y proveedores **no tienen cuenta**: entran con links que llevan un token aleatorio de 32 caracteres. Un link ya respondido queda en solo lectura.
+- Fotos y videos se suben directo a Storage con URLs firmadas (hasta 6 archivos de 100 MB); las cotizaciones de la administradora, hasta 9 MB.
+- Pendiente antes de abrirlo al público: límite de reportes por QR para evitar abuso, y caducidad de links viejos.
 
 ## Base de datos
 
@@ -49,15 +77,12 @@ Nunca pongas la llave `service_role` en `.env.local` del navegador ni la subas a
 | Pagos y servicios | `cobros_renta`, `servicios`, `recibos_servicio` |
 | Bandeja | `conversaciones`, `mensajes` |
 
-- Cada administradora solo ve sus datos (RLS con `es_miembro` / `es_admin`).
-- Inquilinos, dueños y proveedores **no tienen cuenta**: entran con links que llevan un token (`token_publico`, `token`). Esos links se resuelven en el servidor con la llave `service_role` (pendiente).
-- Archivos en el bucket privado `llave`, con ruta `<organizacion_id>/<carpeta>/<archivo>`.
+## Siguientes pasos
 
-## Siguientes pasos (MVP, 8 semanas)
-
-- [ ] Ficha de propiedad con dueño, inquilino y contrato; importación desde Excel
-- [ ] Reporte por QR con fotos y video (página pública con token)
-- [ ] Link de cotización para proveedores (cotizar a distancia o agendar visita)
-- [ ] Comparación de cotizaciones y link de aprobación para el dueño
-- [ ] Bandeja de WhatsApp (WhatsApp Business API vía Twilio)
-- [ ] Recordatorios de renta y servicios
+- [x] Reporte por QR con fotos y video
+- [x] Link de cotización para proveedores (cotizar a distancia o agendar visita)
+- [x] Comparación de cotizaciones y link de aprobación para el dueño
+- [ ] Ficha completa: inquilino y contrato; importación desde Excel
+- [ ] Fotos de antes y después al cerrar
+- [ ] Bandeja de WhatsApp (WhatsApp Business API vía Twilio): mensajes automáticos en vez de abrir WhatsApp a mano
+- [ ] Pagos y servicios: recordatorios de renta, comprobantes y semáforo de luz, agua, gas y predial

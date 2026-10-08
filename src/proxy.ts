@@ -2,11 +2,15 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseConfigurado, supabaseKey, supabaseUrl } from "@/lib/supabase/config";
 
-const RUTAS_PUBLICAS = ["/login", "/auth"];
+// Páginas sin cuenta: reporte por QR (/r), seguimiento del inquilino (/t),
+// link del proveedor (/c) y aprobación del dueño (/a). Se validan por token en el servidor.
+const PREFIJOS_PUBLICOS = ["/login", "/auth/", "/r/", "/t/", "/c/", "/a/"];
 
 // Refresca la sesión en cada request y manda a /login a quien no la tenga.
 export async function proxy(request: NextRequest) {
   if (!supabaseConfigurado) return NextResponse.next();
+  const ruta = request.nextUrl.pathname;
+  if (PREFIJOS_PUBLICOS.some((p) => ruta === p || ruta.startsWith(p))) return NextResponse.next();
 
   let response = NextResponse.next({ request });
 
@@ -29,8 +33,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const esPublica = RUTAS_PUBLICAS.some((r) => request.nextUrl.pathname.startsWith(r));
-  if (!user && !esPublica) {
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

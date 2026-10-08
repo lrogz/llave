@@ -16,7 +16,8 @@ export async function crearOrganizacion(formData: FormData) {
 export async function agregarPropiedad(formData: FormData) {
   const organizacion_id = String(formData.get("organizacion_id") ?? "");
   const nombre = String(formData.get("nombre") ?? "").trim();
-  const direccion = String(formData.get("direccion") ?? "").trim() || null;
+  const direccion = String(formData.get("direccion") ?? "").trim().slice(0, 200) || null;
+  const colonia = String(formData.get("colonia") ?? "").trim().slice(0, 120) || null;
   const tipo = String(formData.get("tipo") ?? "casa");
   const rentaTexto = String(formData.get("renta") ?? "").replace(/[^0-9.]/g, "");
   if (!organizacion_id || !nombre) return;
@@ -26,6 +27,7 @@ export async function agregarPropiedad(formData: FormData) {
     organizacion_id,
     nombre,
     direccion,
+    colonia,
     tipo,
     renta_mensual: rentaTexto ? Number(rentaTexto) : null,
   });
