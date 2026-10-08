@@ -7,16 +7,25 @@ import { supabaseConfigurado } from "@/lib/supabase/config";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [estado, setEstado] = useState<"inicio" | "enviando" | "enviado" | "error">("inicio");
+  const [detalle, setDetalle] = useState("");
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setEstado("enviando");
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-    setEstado(error ? "error" : "enviado");
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) {
+        setDetalle(explicar(error.message, error.status));
+        setEstado("error");
+      } else setEstado("enviado");
+    } catch (e) {
+      setDetalle(explicar(e instanceof Error ? e.message : String(e)));
+      setEstado("error");
+    }
   }
 
   return (
@@ -55,7 +64,7 @@ export default function Login() {
               {estado === "enviando" ? "Enviando…" : "Mandarme el link"}
             </button>
             {estado === "error" && (
-              <p className="text-sm text-naranja-oscuro">No pudimos mandar el correo. Intenta de nuevo.</p>
+              <p role="alert" className="text-sm text-naranja-oscuro">{detalle}</p>
             )}
           </form>
         )}
@@ -76,4 +85,20 @@ function Logo() {
       <span className="font-display text-2xl font-bold">Llave</span>
     </div>
   );
+}
+
+// Traduce los errores más comunes de Supabase Auth a algo accionable.
+function explicar(mensaje: string, status?: number) {
+  const m = mensaje.toLowerCase();
+  if (m.includes("rate limit") || status === 429) {
+    return "Supabase llegó a su límite de correos por hora (el correo gratuito manda muy pocos). Espera unos minutos o configura un SMTP propio en Supabase › Authentication › Emails.";
+  }
+  if (m.includes("signups not allowed") || m.includes("signup")) {
+    return "En tu Supabase están desactivados los registros nuevos. Actívalos en Authentication › Sign In / Providers › Allow new users to sign up.";
+  }
+  if (m.includes("invalid") && m.includes("email")) return "Ese correo no es válido. Revisa que esté completo.";
+  if (m.includes("failed to fetch") || m.includes("network") || m.includes("invalid url") || m.includes("api key")) {
+    return "No pudimos conectar con Supabase. Revisa NEXT_PUBLIC_SUPABASE_URL y la llave publicable en .env.local y reinicia con npm run dev.";
+  }
+  return `No pudimos mandar el correo: ${mensaje}`;
 }
