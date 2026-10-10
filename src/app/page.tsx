@@ -80,7 +80,23 @@ async function Contenido() {
             </p>
             <h1 className="font-display text-4xl font-bold tracking-tight">Mis propiedades</h1>
           </div>
+          <Link
+            href="/propiedades/importar"
+            className="flex min-h-11 items-center rounded-xl border border-borde bg-white px-4 text-sm font-bold hover:border-verde"
+          >
+            Importar desde Excel
+          </Link>
         </header>
+
+        {propiedades.length === 0 && (
+          <Link
+            href="/propiedades/importar"
+            className="mt-6 flex flex-col gap-1 rounded-2xl bg-tinta p-5 text-white hover:opacity-95"
+          >
+            <span className="font-display text-xl font-bold">¿Tienes tu cartera en Excel?</span>
+            <span className="text-sm text-white/70">Súbela y la importamos completa en un minuto →</span>
+          </Link>
+        )}
 
         <section aria-label="Propiedades" className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
           {propiedades.map((p) => {

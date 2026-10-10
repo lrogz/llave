@@ -17,6 +17,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 | --- | --- | --- |
 | Propiedades | `/` | Administradora |
 | Ficha con QR imprimible | `/propiedades/[id]` | Administradora |
+| Importar cartera desde Excel/CSV | `/propiedades/importar` | Administradora |
 | Tickets | `/tickets` | Administradora |
 | Ticket y comparación | `/tickets/[id]` | Administradora |
 | Reportar un problema | `/r/[codigo]` | Inquilino (desde el QR) |
