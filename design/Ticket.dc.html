@@ -18,10 +18,10 @@ a{color:#0B6B53}a:hover{color:#084C3B}
 <div style="min-height: 980px; background: #EEF1EF; font-family: 'DM Sans', sans-serif; color: #14201C; display: flex; flex-wrap: wrap">
   <nav aria-label="Secciones" style="flex: 1 1 220px; max-width: 250px; min-width: 200px; background: #14201C; color: #E7EEEA; padding: 28px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
     <div style="display: flex; align-items: center; gap: 10px; padding: 0 10px">
-      <div style="width: 30px; height: 30px; border-radius: 8px; background: #3FD3A5; display: flex; align-items: center; justify-content: center">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14201C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M11 12l9-9M17 6l3 3"></path></svg>
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: #000000; box-shadow: 0 0 0 1px rgba(63,211,165,0.4); display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3FD3A5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M11 12l9-9M17 6l3 3"></path></svg>
       </div>
-      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 22px; color: #FFFFFF">Llave</span>
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 22px; color: #FFFFFF">Black Key</span>
     </div>
     <div style="display: flex; flex-direction: column; gap: 4px">
       <a href="Main.dc.html" style="text-decoration: none; color: #C9D6D0; border-radius: 10px; padding: 11px 12px; font-size: 14px">Propiedades</a>
@@ -70,7 +70,7 @@ a{color:#0B6B53}a:hover{color:#084C3B}
         <p style="margin: 0; font-size: 14px; line-height: 1.5">"Gotea debajo del lavabo, ya se hinchó el mueble."</p>
         <div style="border-top: 1px solid #E6ECE9; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #4E5C56">
           <span>8:42 · Ticket creado desde WhatsApp</span>
-          <span>9:10 · Enviado a tus 2 plomeros de siempre y a la red Llave</span>
+          <span>9:10 · Enviado a tus 2 plomeros de siempre y a la red Black Key</span>
           <span>14:30 · 3 cotizaciones recibidas (1 subida por ti)</span>
         </div>
       </section>
@@ -89,7 +89,7 @@ a{color:#0B6B53}a:hover{color:#084C3B}
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14201C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>
             Subir cotización (PDF, foto o nota de voz)
           </button>
-          <button type="button" style="font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: transparent; color: #0B5A46; cursor: pointer">+ Pedir a la red Llave</button>
+          <button type="button" style="font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: transparent; color: #0B5A46; cursor: pointer">+ Pedir a la red Black Key</button>
         </div>
         <span style="font-size: 13px; color: #4E5C56; margin-top: -4px">Tu proveedor recibe un link con las fotos y el video; responde sin descargar nada ni crear cuenta.</span>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px">
@@ -134,7 +134,7 @@ class Component extends DCLogic {
   renderVals() {
     const datos = [
       { id: 'raul', nombre: 'Raúl G. Plomería', precio: '$1,450', etiqueta: 'Mejor calificado', fuente: 'Tu proveedor', propio: true, calif: '4.9 · 12 trabajos tuyos', cuando: 'Jue 9, 10:00', garantia: '90 días', trabajos: '12' },
-      { id: 'hidro', nombre: 'Hidroservicios QRO', precio: '$1,180', etiqueta: 'Mejor precio', fuente: 'Red Llave', propio: false, calif: '4.3 · 15 reseñas', cuando: 'Lun 13', garantia: '30 días', trabajos: '2' },
+      { id: 'hidro', nombre: 'Hidroservicios QRO', precio: '$1,180', etiqueta: 'Mejor precio', fuente: 'Red Black Key', propio: false, calif: '4.3 · 15 reseñas', cuando: 'Lun 13', garantia: '30 días', trabajos: '2' },
       { id: 'fix', nombre: 'Don Memo (subida por ti)', precio: '$1,600', etiqueta: 'PDF por WhatsApp', fuente: 'Tu proveedor', propio: true, calif: 'Sin calificar aún', cuando: 'Mañana, 16:00', garantia: '30 días', trabajos: '0' }
     ];
     const elegido = datos.find((d) => d.id === this.state.sel);
