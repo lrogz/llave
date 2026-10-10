@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sesionConOrg } from "@/lib/sesion";
+import { sincronizarCantidad } from "@/lib/stripe";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function guardarDueno(form: FormData) {
   const { supabase, org } = await sesionConOrg();
@@ -60,7 +62,7 @@ export async function editarPropiedad(form: FormData) {
 }
 
 export async function borrarPropiedad(form: FormData) {
-  const { supabase } = await sesionConOrg();
+  const { supabase, org } = await sesionConOrg();
   const id = txt(form, "id", 40);
   if (!/^[0-9a-f-]{36}$/i.test(id)) return;
   const { data: p } = await supabase.from("propiedades").select("id, nombre").eq("id", id).maybeSingle();
@@ -68,6 +70,7 @@ export async function borrarPropiedad(form: FormData) {
   if (txt(form, "confirmar", 120).toLowerCase() !== p.nombre.toLowerCase()) throw new Error("Escribe el nombre exacto de la propiedad para confirmar.");
   const { error } = await supabase.from("propiedades").delete().eq("id", p.id);
   if (error) throw new Error("Solo la dueña de la cuenta o una administradora puede borrar propiedades.");
+  await sincronizarCantidad(createAdminClient(), org.id).catch(() => {});
   revalidatePath("/");
   redirect("/");
 }

@@ -15,7 +15,9 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 
 | Pantalla | Ruta | Quién la usa |
 | --- | --- | --- |
+| Página de venta (sin sesión) | `/conoce`, `/registro` | Público |
 | Hoy: lo que necesita atención | `/hoy` | Administradora |
+| Plan y pago | `/plan` | Administradora |
 | Propiedades | `/` | Administradora |
 | Personas: dueños e inquilinos | `/personas` | Administradora |
 | Ficha del dueño / inquilino | `/personas/duenos/[id]`, `/personas/inquilinos/[id]` | Administradora |
@@ -56,6 +58,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    6. `supabase/migrations/20261010090000_servicios_documentos.sql`
    7. `supabase/migrations/20261010100000_equipo.sql`
    8. `supabase/migrations/20261010110000_avisos.sql`
+   9. `supabase/migrations/20261010120000_planes.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -103,6 +106,20 @@ Límite de Vercel: cada envío al servidor acepta hasta ~4.5 MB. Las fotos se re
 5. Para que los correos de entrada (link mágico) no se topen con el límite gratuito de Supabase, en Supabase › Authentication › Emails › SMTP Settings usa: host `smtp.resend.com`, puerto `465`, usuario `resend`, contraseña = tu API key, remitente del mismo dominio.
 
 Mientras tanto se puede entrar con **correo y contraseña** (Ajustes › Tu contraseña).
+
+### 5. Cobro de la suscripción con Stripe (opcional)
+
+Precio: **$110 MXN por propiedad al mes**, gratis hasta 3 propiedades, 30 días de prueba sin límite.
+
+1. Crea tu cuenta en [stripe.com](https://stripe.com) (México) y activa los pagos.
+2. Products › Add product "Black Key Pro" › precio **recurrente mensual de $110 MXN** (o $127.60 con IVA incluido), "por unidad". Copia el `price_…`.
+3. Developers › API keys › copia la **Secret key** (`sk_live_…`).
+4. Developers › Webhooks › Add endpoint: `https://TU-DIRECCION/api/stripe/webhook` con los eventos
+   `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. Copia el **Signing secret** (`whsec_…`).
+5. Settings › Billing › Customer portal: actívalo (para que cambien tarjeta, vean facturas o cancelen).
+6. En Vercel agrega `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` y Redeploy.
+
+Sin estas variables la app funciona igual; la pantalla Plan solo dice que los pagos no están conectados.
 
 ## Seguridad
 

@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { sesionConOrg } from "@/lib/sesion";
+import { estadoPlan, GRATIS_HASTA, puedeAgregar } from "@/lib/plan";
+import { sincronizarCantidad } from "@/lib/stripe";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { convertir, MAX_FILAS, simplificar, type Celda, type Clave, type FilaImportada, type Mapeo } from "@/lib/importar";
 
 export type Resultado = {
@@ -50,6 +53,11 @@ export async function importarPropiedades(entrada: unknown[]): Promise<Resultado
     filas.push(f);
   }
 
+  // Plan gratis: hasta 3 propiedades (sin límite en la prueba o con plan activo).
+  if (filas.length && !puedeAgregar(await estadoPlan(supabase, org.id), filas.length)) {
+    return { creadas: 0, duenosNuevos: 0, omitidas, error: `El plan gratis incluye hasta ${GRATIS_HASTA} propiedades y este archivo trae ${filas.length}. Activa tu plan en "Plan" para importarlas todas.` };
+  }
+
   // Dueños: reutiliza los que ya existen (mismo nombre) y crea los nuevos de una vez.
   const { data: duenosActuales } = await supabase.from("duenos").select("id, nombre").eq("organizacion_id", org.id);
   const idDueno = new Map((duenosActuales ?? []).map((d) => [simplificar(d.nombre), d.id as string]));
@@ -84,6 +92,7 @@ export async function importarPropiedades(entrada: unknown[]): Promise<Resultado
     if (error) return { creadas: 0, duenosNuevos: nuevos.size, omitidas, error: "No pudimos guardar las propiedades." };
   }
 
+  await sincronizarCantidad(createAdminClient(), org.id).catch(() => {});
   revalidatePath("/");
   return { creadas: filas.length, duenosNuevos: nuevos.size, omitidas };
 }

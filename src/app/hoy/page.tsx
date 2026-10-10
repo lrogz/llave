@@ -6,6 +6,7 @@ import { ListaPendientes, NuevoPendiente, type Pendiente } from "@/components/Se
 import { diasEntre, fechaConAnio, haceHoras, hoyMX, plantillas } from "@/lib/crm";
 import { QUIEN_PAGA, TIPOS_SERVICIO, etiqueta, formatoFecha, formatoFechaHora, linkWhatsApp, origen, pesos } from "@/lib/util";
 import { sesionConOrg } from "@/lib/sesion";
+import { estadoPlan, GRATIS_HASTA } from "@/lib/plan";
 import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
 import { inicioDeMes, mesAnterior, mesTexto } from "@/lib/reporte";
 
@@ -45,6 +46,7 @@ export default function Hoy() {
 
 async function Contenido() {
   const { supabase, org } = await sesionConOrg();
+  const plan = await estadoPlan(supabase, org.id);
   const hoy = hoyMX();
   const hace48h = haceHoras(48);
   const hace3d = haceHoras(72);
@@ -160,6 +162,18 @@ async function Contenido() {
           <h1 className="font-display text-4xl font-bold tracking-tight">Hoy</h1>
           <p className="mt-1 text-gris">{nada ? "Todo al día. Nada urgente que atender." : "Lo que necesita tu atención, en orden."}</p>
         </header>
+
+        {!plan.pagando && (plan.enPrueba ? plan.diasPrueba <= 7 : plan.propiedades > GRATIS_HASTA) && (
+          <Link href="/plan" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-tinta p-4 text-white">
+            <span className="text-sm">
+              {plan.enPrueba
+                ? `Tu prueba gratis termina en ${plan.diasPrueba} ${plan.diasPrueba === 1 ? "día" : "días"}.`
+                : `Tienes ${plan.propiedades} propiedades y el plan gratis incluye ${GRATIS_HASTA}.`}{" "}
+              Activa tu plan para seguir sin límites.
+            </span>
+            <span className="rounded-xl bg-menta px-3 py-2 text-sm font-bold text-tinta">Ver plan</span>
+          </Link>
+        )}
 
         <ul aria-label="Resumen" className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
           {tarjetas.map((t) => (
