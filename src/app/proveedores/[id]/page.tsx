@@ -7,6 +7,7 @@ import { Cargando, Menu } from "@/components/Menu";
 import { campo, Etiqueta } from "@/components/Seguimiento";
 import { CATEGORIAS, COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { duracion, entre, promedio as promedioDe } from "@/lib/crm";
 import { guardarProveedor } from "../actions";
 
 export const metadata: Metadata = { title: "Proveedor · Black Key" };
@@ -25,6 +26,7 @@ type Prov = {
 };
 type Cot = {
   id: string;
+  solicitudes_cotizacion: { enviada_at: string } | null;
   monto: number | null;
   modo: string;
   estado: string;
@@ -65,7 +67,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const [cq, sq] = await Promise.all([
     supabase
       .from("cotizaciones")
-      .select("id, monto, modo, estado, created_at, tickets(id, folio, titulo, estado, calificacion, resuelto_at, propiedades(nombre))")
+      .select("id, monto, modo, estado, created_at, solicitudes_cotizacion(enviada_at), tickets(id, folio, titulo, estado, calificacion, resuelto_at, propiedades(nombre))")
       .eq("proveedor_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -80,6 +82,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const respondio = solicitudes.filter((s) => s.estado === "cotizada" || s.estado === "visita_agendada").length;
   const conMonto = cotizaciones.filter((c) => c.monto != null);
   const promedio = conMonto.length ? conMonto.reduce((s, c) => s + Number(c.monto), 0) / conMonto.length : null;
+  const ahora = new Date().toISOString();
+  const tarda = promedioDe(cotizaciones.map((c) => entre(c.solicitudes_cotizacion?.enviada_at, c.created_at)));
   const sinResponder = solicitudes.filter((s) => s.estado === "enviada" || s.estado === "vista");
 
   return (
@@ -113,6 +117,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
         <ul aria-label="Desempeño" className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
           <Cifra titulo="Calificación" valor={p.calificacion != null ? `★ ${Number(p.calificacion).toFixed(1)}` : "—"} nota={`${p.trabajos} ${p.trabajos === 1 ? "trabajo" : "trabajos"}`} />
           <Cifra titulo="Responde" valor={solicitudes.length ? `${Math.round((respondio / solicitudes.length) * 100)}%` : "—"} nota={`${respondio} de ${solicitudes.length} invitaciones`} />
+          <Cifra titulo="Cotiza en" valor={tarda != null ? duracion(tarda) : "—"} nota="promedio desde que lo invitas" />
           <Cifra titulo="Gana" valor={cotizaciones.length ? `${Math.round((ganadas.length / cotizaciones.length) * 100)}%` : "—"} nota={`${ganadas.length} de ${cotizaciones.length} cotizaciones`} />
           <Cifra titulo="Le has pagado" valor={pesos.format(pagado)} nota={promedio != null ? `cotiza ~${pesos.format(promedio)}` : undefined} />
         </ul>
@@ -139,7 +144,9 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                         <span>
                           No ha cotizado: #{s.tickets?.folio} {s.tickets?.titulo}
                         </span>
-                        <span className="text-xs text-gris">{s.vista_at ? "Vio el link" : `Invitado ${formatoFecha(s.enviada_at)}`}</span>
+                        <span className="text-xs text-gris">
+                          {s.vista_at ? "Vio el link · " : ""}invitado hace {duracion(entre(s.enviada_at, ahora)!)}
+                        </span>
                       </Link>
                     </li>
                   ))}

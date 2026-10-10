@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { Boton } from "@/components/Boton";
 import { Cargando, Menu } from "@/components/Menu";
 import { campo, Etiqueta, LineaTiempo, ListaPendientes, NuevaNota, NuevoPendiente, type Evento, type Pendiente } from "@/components/Seguimiento";
-import { CANALES, FRECUENCIAS, plantillas } from "@/lib/crm";
+import { CANALES, FRECUENCIAS, duracion, entre, plantillas, promedio } from "@/lib/crm";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
 import { SeccionDocumentos } from "@/components/Documentos";
@@ -94,6 +94,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const propiedades = (props.data ?? []) as Prop[];
   const volver = `/personas/duenos/${id}`;
   const abiertos = propiedades.flatMap((p) => p.tickets.filter((t) => t.estado !== "resuelto" && t.estado !== "cancelado").map((t) => ({ ...t, propiedad: p.nombre })));
+  const tAprueba = promedio(((aprobaciones.data ?? []) as unknown as Aprob[]).map((a) => entre(a.created_at, a.decidida_at)));
   const rentaTotal = propiedades.reduce((s, p) => s + (p.estado === "rentada" ? (p.renta_mensual ?? 0) : 0), 0);
 
   const eventos: Evento[] = [
@@ -136,6 +137,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               {propiedades.length} {propiedades.length === 1 ? "propiedad" : "propiedades"}
               {rentaTotal > 0 && ` · ${pesos.format(rentaTotal)} al mes en rentas`}
               {abiertos.length > 0 && ` · ${abiertos.length} ${abiertos.length === 1 ? "ticket abierto" : "tickets abiertos"}`}
+              {tAprueba != null && ` · aprueba en ~${duracion(tAprueba)}`}
             </p>
           </div>
           {d.telefono && (

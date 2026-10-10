@@ -79,3 +79,23 @@ export const plantillas = {
   saludoDueno: (dueno: string) => `Hola ${primerNombre(dueno)}, te escribo de la administración sobre tus propiedades.`,
   saludoInquilino: (inquilino: string) => `Hola ${primerNombre(inquilino)}, te escribo de la administración.`,
 };
+
+// Tiempo legible: "40 min", "5 h", "2 días".
+export function duracion(ms: number) {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const min = ms / 60_000;
+  if (min < 60) return `${Math.max(1, Math.round(min))} min`;
+  const h = min / 60;
+  if (h < 24) return `${Math.round(h)} h`;
+  const d = h / 24;
+  return `${d < 10 ? Math.round(d * 10) / 10 : Math.round(d)} ${Math.round(d * 10) / 10 === 1 ? "día" : "días"}`;
+}
+
+// Diferencia en ms entre dos fechas ISO (b - a); null si falta alguna.
+export const entre = (a?: string | null, b?: string | null) => (a && b ? Date.parse(b) - Date.parse(a) : null);
+
+// Promedio de duraciones válidas; null si no hay datos.
+export function promedio(valores: (number | null | undefined)[]) {
+  const v = valores.filter((x): x is number => typeof x === "number" && x >= 0);
+  return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null;
+}

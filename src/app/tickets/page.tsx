@@ -5,6 +5,7 @@ import { Cargando, Menu } from "@/components/Menu";
 import { sesion } from "@/lib/sesion";
 import { CATEGORIAS, COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha } from "@/lib/datos";
 import { redirect } from "next/navigation";
+import { duracion, entre, haceHoras, promedio } from "@/lib/crm";
 
 export const metadata: Metadata = { title: "Tickets · Black Key" };
 
@@ -43,8 +44,32 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ estado?: st
   if (filtro === "abiertos") consulta = consulta.not("estado", "in", "(resuelto,cancelado)");
   else if (filtro && filtro !== "todos") consulta = consulta.eq("estado", filtro);
 
-  const { data } = await consulta;
+  const desde = haceHoras(90 * 24);
+  const [{ data }, { data: hist }, { data: aps }] = await Promise.all([
+    consulta,
+    supabase
+      .from("tickets")
+      .select("created_at, resuelto_at, estado, solicitudes_cotizacion(enviada_at), cotizaciones(created_at)")
+      .gte("created_at", desde)
+      .neq("estado", "cancelado"),
+    supabase.from("aprobaciones").select("created_at, decidida_at").gte("created_at", desde).not("decidida_at", "is", null),
+  ]);
   const tickets = (data ?? []) as unknown as Fila[];
+
+  // Tiempos de respuesta (últimos 90 días)
+  const h = (hist ?? []) as { created_at: string; resuelto_at: string | null; estado: string; solicitudes_cotizacion: { enviada_at: string }[]; cotizaciones: { created_at: string }[] }[];
+  const ahora = new Date().toISOString();
+  const tResolver = promedio(h.map((x) => entre(x.created_at, x.resuelto_at)));
+  const tCotizar = promedio(
+    h.map((x) => {
+      const c = x.cotizaciones.map((y) => y.created_at).sort()[0];
+      const s = x.solicitudes_cotizacion.map((y) => y.enviada_at).sort()[0];
+      return entre(s ?? x.created_at, c);
+    }),
+  );
+  const tAprobar = promedio((aps ?? []).map((a) => entre(a.created_at, a.decidida_at)));
+  const abiertos = h.filter((x) => x.estado !== "resuelto");
+  const masViejo = abiertos.length ? Math.max(...abiertos.map((x) => entre(x.created_at, ahora)!)) : null;
 
   const filtros: [string, string][] = [["abiertos", "Abiertos"], ...ESTADOS_TICKET.map(([v, t]) => [v, t] as [string, string]), ["todos", "Todos"]];
 
@@ -58,6 +83,13 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ estado?: st
           </p>
           <h1 className="font-display text-4xl font-bold tracking-tight">Tickets</h1>
         </header>
+
+        <ul aria-label="Tiempos de respuesta" className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
+          <Tiempo titulo="Se resuelven en" valor={tResolver} nota="promedio, 90 días" />
+          <Tiempo titulo="Primera cotización en" valor={tCotizar} nota="desde que invitas" />
+          <Tiempo titulo="Dueños aprueban en" valor={tAprobar} nota="promedio" />
+          <Tiempo titulo="Abierto más antiguo" valor={masViejo} nota={`${abiertos.length} abiertos`} alerta={masViejo != null && masViejo > 7 * 86_400_000} />
+        </ul>
 
         <nav aria-label="Filtros" className="mt-5 flex flex-wrap gap-2">
           {filtros.map(([valor, texto]) => (
@@ -105,7 +137,13 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ estado?: st
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${COLOR_ESTADO[t.estado] ?? ""}`}>
                     {etiqueta(ESTADOS_TICKET, t.estado) || "Cancelado"}
                   </span>
-                  <span className="text-sm text-gris">{formatoFecha(t.created_at)}</span>
+                  {t.estado === "resuelto" || t.estado === "cancelado" ? (
+                    <span className="text-sm text-gris">{formatoFecha(t.created_at)}</span>
+                  ) : (
+                    <span className={`text-sm ${entre(t.created_at, ahora)! > 7 * 86_400_000 ? "font-semibold text-naranja-oscuro" : "text-gris"}`}>
+                      hace {duracion(entre(t.created_at, ahora)!)}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}
@@ -113,5 +151,15 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ estado?: st
         )}
       </main>
     </div>
+  );
+}
+
+function Tiempo({ titulo, valor, nota, alerta }: { titulo: string; valor: number | null; nota: string; alerta?: boolean }) {
+  return (
+    <li className={`flex flex-col gap-1 rounded-2xl p-4 ${alerta ? "bg-naranja-claro" : "bg-white"}`}>
+      <span className="text-sm text-gris">{titulo}</span>
+      <span className={`font-display text-2xl font-bold ${alerta ? "text-naranja-oscuro" : ""}`}>{valor == null ? "—" : duracion(valor)}</span>
+      <span className="text-xs text-gris">{nota}</span>
+    </li>
   );
 }

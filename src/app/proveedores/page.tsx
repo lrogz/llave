@@ -6,6 +6,7 @@ import { Cargando, Menu } from "@/components/Menu";
 import { campo } from "@/components/Seguimiento";
 import { CATEGORIAS, etiqueta, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { duracion, entre, promedio } from "@/lib/crm";
 import { agregarProveedor } from "./actions";
 
 export const metadata: Metadata = { title: "Proveedores · Black Key" };
@@ -19,7 +20,7 @@ type Prov = {
   zonas: string[];
   calificacion: number | null;
   trabajos: number;
-  cotizaciones: { monto: number | null; estado: string; tickets: { estado: string } | null }[];
+  cotizaciones: { monto: number | null; estado: string; created_at: string; tickets: { estado: string } | null; solicitudes_cotizacion: { enviada_at: string } | null }[];
   solicitudes_cotizacion: { estado: string }[];
 };
 
@@ -38,7 +39,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ esp?: strin
 
   let q = supabase
     .from("proveedores")
-    .select("id, nombre, telefono, es_red, especialidades, zonas, calificacion, trabajos, cotizaciones(monto, estado, tickets(estado)), solicitudes_cotizacion(estado)")
+    .select("id, nombre, telefono, es_red, especialidades, zonas, calificacion, trabajos, cotizaciones(monto, estado, created_at, tickets(estado), solicitudes_cotizacion(enviada_at)), solicitudes_cotizacion(estado)")
     .order("calificacion", { ascending: false, nullsFirst: false })
     .order("nombre");
   if (filtro) q = q.contains("especialidades", [filtro]);
@@ -129,6 +130,7 @@ function Fila({ p }: { p: Prov }) {
   const pagado = p.cotizaciones.filter((c) => c.estado === "aprobada" && c.tickets?.estado === "resuelto").reduce((s, c) => s + Number(c.monto ?? 0), 0);
   const respondio = p.solicitudes_cotizacion.filter((s) => s.estado === "cotizada" || s.estado === "visita_agendada").length;
   const invitaciones = p.solicitudes_cotizacion.length;
+  const tarda = promedio(p.cotizaciones.map((c) => entre(c.solicitudes_cotizacion?.enviada_at, c.created_at)));
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
       <Link href={`/proveedores/${p.id}`} className="min-w-0 flex-1 hover:underline">
@@ -145,6 +147,7 @@ function Fila({ p }: { p: Prov }) {
         <Dato titulo="Calificación" valor={p.calificacion != null ? `★ ${Number(p.calificacion).toFixed(1)}` : "—"} />
         <Dato titulo="Trabajos" valor={String(p.trabajos)} />
         {!p.es_red && <Dato titulo="Responde" valor={invitaciones ? `${Math.round((respondio / invitaciones) * 100)}%` : "—"} />}
+        {!p.es_red && <Dato titulo="Cotiza en" valor={tarda != null ? duracion(tarda) : "—"} />}
         {!p.es_red && <Dato titulo="Pagado" valor={pesos.format(pagado)} />}
         {p.telefono && (
           <a href={linkWhatsApp(p.telefono, `Hola ${p.nombre.split(" ")[0]}, `)} target="_blank" rel="noreferrer" className="flex min-h-10 items-center rounded-xl border border-borde px-3 text-xs font-bold hover:border-verde">

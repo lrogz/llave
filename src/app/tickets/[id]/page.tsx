@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Avance } from "@/components/Avance";
 import { Boton } from "@/components/Boton";
 import { InputComprimido } from "@/components/InputComprimido";
+import { duracion, entre } from "@/lib/crm";
 import { Cargando, Menu } from "@/components/Menu";
 import { sesion } from "@/lib/sesion";
 import {
@@ -57,6 +58,7 @@ type Ticket = {
   token_publico: string;
   calificacion: number | null;
   created_at: string;
+  resuelto_at: string | null;
   propiedades: {
     id: string;
     nombre: string;
@@ -84,7 +86,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const { data: t } = await supabase
     .from("tickets")
     .select(
-      "id, folio, titulo, descripcion, categoria, urgencia, estado, quien_paga, disponibilidad, canal_origen, token_publico, calificacion, created_at, propiedades(id, nombre, direccion, colonia, duenos(nombre, telefono)), inquilinos(nombre, telefono)",
+      "id, folio, titulo, descripcion, categoria, urgencia, estado, quien_paga, disponibilidad, canal_origen, token_publico, calificacion, created_at, resuelto_at, propiedades(id, nombre, direccion, colonia, duenos(nombre, telefono)), inquilinos(nombre, telefono)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -178,6 +180,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
         </header>
 
         {ticket.estado !== "cancelado" && <Avance estado={ticket.estado} />}
+        {ticket.estado !== "cancelado" && <Tiempos ticket={ticket} solicitudes={solicitudes} cotizaciones={cotizaciones} aprobaciones={aprobaciones} />}
 
         <div className="flex flex-wrap items-start gap-5">
           {/* Evidencia */}
@@ -514,6 +517,36 @@ function AvisoAprobacion({
         Mandar por WhatsApp
       </a>
     </div>
+  );
+}
+
+// Cuánto tardó cada paso: así se ve dónde se atora el ticket.
+function Tiempos({ ticket, solicitudes, cotizaciones, aprobaciones }: { ticket: Ticket; solicitudes: Solicitud[]; cotizaciones: Cotizacion[]; aprobaciones: Aprobacion[] }) {
+  const primeraInvitacion = solicitudes.map((s) => s.enviada_at).sort()[0];
+  const primeraCot = cotizaciones.map((c) => c.created_at).sort()[0];
+  const enviadaDueno = aprobaciones.map((a) => a.created_at).sort()[0];
+  const decidida = aprobaciones.find((a) => a.decision === "aprobada")?.decidida_at;
+  const pasos: { texto: string; valor: string; alerta?: boolean }[] = [];
+  if (primeraInvitacion) pasos.push({ texto: "Invitaste a cotizar", valor: `${duracion(entre(ticket.created_at, primeraInvitacion)!)} después del reporte` });
+  if (primeraCot) pasos.push({ texto: "Primera cotización", valor: `en ${duracion(entre(primeraInvitacion ?? ticket.created_at, primeraCot)!)}` });
+  if (enviadaDueno) {
+    const espera = entre(enviadaDueno, decidida ?? new Date().toISOString())!;
+    pasos.push({ texto: decidida ? "El dueño aprobó" : "Esperando al dueño", valor: decidida ? `en ${duracion(espera)}` : `hace ${duracion(espera)}`, alerta: !decidida && espera > 48 * 3_600_000 });
+  }
+  const total = entre(ticket.created_at, ticket.resuelto_at ?? new Date().toISOString())!;
+  pasos.push({
+    texto: ticket.resuelto_at ? "Resuelto" : "Abierto",
+    valor: ticket.resuelto_at ? `en ${duracion(total)} en total` : `hace ${duracion(total)}`,
+    alerta: !ticket.resuelto_at && total > 7 * 86_400_000,
+  });
+  return (
+    <section aria-label="Tiempos de respuesta" className="flex flex-wrap gap-2">
+      {pasos.map((p) => (
+        <span key={p.texto} className={`rounded-xl px-3 py-2 text-sm ${p.alerta ? "bg-naranja-claro text-naranja-oscuro" : "bg-white"}`}>
+          <span className="font-semibold">{p.texto}</span> <span className={p.alerta ? "" : "text-gris"}>{p.valor}</span>
+        </span>
+      ))}
+    </section>
   );
 }
 
