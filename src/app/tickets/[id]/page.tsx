@@ -103,11 +103,14 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
       .select("id, modo, monto, incluye_materiales, garantia_dias, fechas_disponibles, visita_at, archivo_path, subida_por_admin, notas, estado, created_at, proveedores(id, nombre, telefono, es_red, calificacion, trabajos)")
       .eq("ticket_id", id)
       .order("created_at"),
-    supabase.from("proveedores").select("id, nombre").eq("organizacion_id", org.id).order("nombre"),
+    supabase.from("proveedores").select("id, nombre, especialidades, calificacion").eq("organizacion_id", org.id).order("nombre"),
   ]);
   const solicitudes = (sol ?? []) as unknown as Solicitud[];
   const cotizaciones = (cot ?? []) as unknown as Cotizacion[];
-  const misProveedores = (provs ?? []) as { id: string; nombre: string }[];
+  // Primero los que hacen este tipo de trabajo, luego los mejor calificados.
+  const misProveedores = ((provs ?? []) as { id: string; nombre: string; especialidades: string[]; calificacion: number | null }[])
+    .map((p) => ({ ...p, afin: !!ticket.categoria && p.especialidades.includes(ticket.categoria) }))
+    .sort((a, b) => Number(b.afin) - Number(a.afin) || (b.calificacion ?? 0) - (a.calificacion ?? 0) || a.nombre.localeCompare(b.nombre));
 
   const { data: aps } = cotizaciones.length
     ? await supabase
@@ -514,7 +517,7 @@ function AvisoAprobacion({
   );
 }
 
-function SelectorProveedor({ proveedores }: { proveedores: { id: string; nombre: string }[] }) {
+function SelectorProveedor({ proveedores }: { proveedores: { id: string; nombre: string; afin: boolean; calificacion: number | null }[] }) {
   return (
     <>
       {proveedores.length > 0 && (
@@ -524,7 +527,9 @@ function SelectorProveedor({ proveedores }: { proveedores: { id: string; nombre:
             <option value="nuevo">Uno nuevo…</option>
             {proveedores.map((p) => (
               <option key={p.id} value={p.id}>
+                {p.afin ? "★ " : ""}
                 {p.nombre}
+                {p.calificacion != null ? ` · ${Number(p.calificacion).toFixed(1)}` : ""}
               </option>
             ))}
           </select>

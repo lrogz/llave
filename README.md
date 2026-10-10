@@ -24,6 +24,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 | Tickets | `/tickets` | Administradora |
 | Ticket y comparación | `/tickets/[id]` | Administradora |
 | Pagos: rentas del mes | `/pagos` | Administradora |
+| Proveedores y su ficha | `/proveedores`, `/proveedores/[id]` | Administradora |
 | Pago de renta y comprobante | `/p/[token]` | Inquilino (sin cuenta) |
 | Reporte mensual del dueño | `/e/[token]` | Dueño (sin cuenta) |
 | Reportar un problema | `/r/[codigo]` | Inquilino (desde el QR) |

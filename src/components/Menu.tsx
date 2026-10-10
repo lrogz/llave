@@ -8,12 +8,12 @@ const ITEMS = [
   { texto: "Personas", href: "/personas" },
   { texto: "Tickets", href: "/tickets" },
   { texto: "Bandeja", href: null },
-  { texto: "Proveedores", href: null },
+  { texto: "Proveedores", href: "/proveedores" },
   { texto: "Pagos", href: "/pagos" },
   { texto: "Documentos", href: null },
 ] as const;
 
-export function Menu({ activo, nombreOrg }: { activo: "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos"; nombreOrg: string }) {
+export function Menu({ activo, nombreOrg }: { activo: "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Proveedores"; nombreOrg: string }) {
   return (
     <nav
       aria-label="Secciones"
