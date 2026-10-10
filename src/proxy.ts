@@ -4,7 +4,7 @@ import { supabaseConfigurado, supabaseKey, supabaseUrl } from "@/lib/supabase/co
 
 // Páginas sin cuenta: reporte por QR (/r), seguimiento del inquilino (/t),
 // link del proveedor (/c), aprobación del dueño (/a) , su reporte mensual (/e) y el link de pago del inquilino (/p). Se validan por token en el servidor.
-const PREFIJOS_PUBLICOS = ["/login", "/auth/", "/r/", "/t/", "/c/", "/a/", "/e/", "/p/"];
+const PREFIJOS_PUBLICOS = ["/login", "/auth/", "/r/", "/t/", "/c/", "/a/", "/e/", "/p/", "/unirme/"];
 
 // Refresca la sesión en cada request y manda a /login a quien no la tenga.
 export async function proxy(request: NextRequest) {

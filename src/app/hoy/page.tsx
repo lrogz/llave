@@ -161,7 +161,7 @@ async function Contenido() {
           <p className="mt-1 text-gris">{nada ? "Todo al día. Nada urgente que atender." : "Lo que necesita tu atención, en orden."}</p>
         </header>
 
-        <ul aria-label="Resumen" className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
+        <ul aria-label="Resumen" className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
           {tarjetas.map((t) => (
             <li key={t.href}>
               <a href={t.href} className={`flex h-full flex-col gap-1 rounded-2xl p-4 ${t.n > 0 ? "bg-white" : "bg-white/60 text-gris"}`}>

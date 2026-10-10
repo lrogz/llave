@@ -24,3 +24,10 @@ body {
   color: var(--color-tinta);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Celular: deja espacio para la barra de secciones de abajo. */
+@media (max-width: 767px) {
+  body:has(nav[data-movil]) {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}

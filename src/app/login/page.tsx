@@ -13,6 +13,11 @@ export default function Login() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setEstado("enviando");
+    // Si venía de una invitación, al entrar regresa ahí.
+    const siguiente = new URLSearchParams(window.location.search).get("siguiente") ?? "";
+    document.cookie = /^\/unirme\/[0-9a-f]{32}$/.test(siguiente)
+      ? `bk_siguiente=${siguiente}; path=/; max-age=3600; samesite=lax`
+      : "bk_siguiente=; path=/; max-age=0";
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOtp({

@@ -133,7 +133,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
           </nav>
         </header>
 
-        <ul aria-label="Resumen de rentas" className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
+        <ul aria-label="Resumen de rentas" className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
           <Cifra titulo="Por cobrar en el mes" valor={pesos.format(esperado)} />
           <Cifra titulo="Cobrado" valor={pesos.format(cobrado)} nota={esperado ? `${Math.round((cobrado / esperado) * 100)}%` : undefined} verde />
           <Cifra titulo="Comprobantes por revisar" valor={String(cobros.filter((c) => c.estado === "por_confirmar").length)} />

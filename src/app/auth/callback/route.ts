@@ -9,7 +9,14 @@ export async function GET(request: NextRequest) {
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(`${origin}/`);
+    if (!error) {
+      // Regresa a la invitación si de ahí venía (solo rutas propias conocidas).
+      const siguiente = request.cookies.get("bk_siguiente")?.value ?? "";
+      const destino = /^\/unirme\/[0-9a-f]{32}$/.test(siguiente) ? siguiente : "/";
+      const res = NextResponse.redirect(`${origin}${destino}`);
+      res.cookies.delete("bk_siguiente");
+      return res;
+    }
   }
 
   return NextResponse.redirect(`${origin}/login?error=link`);

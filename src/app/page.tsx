@@ -187,6 +187,7 @@ function CrearOrganizacion({ email }: { email: string }) {
         <p className="text-sm text-gris">{email}</p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">¿Cómo se llama tu administradora?</h1>
         <p className="mt-2 text-sm text-gris">Si apenas empiezas, pon tu nombre. Lo puedes cambiar después.</p>
+        <p className="mt-2 text-sm text-gris">¿Te invitaron a un equipo? No crees una cuenta: abre el link de tu invitación.</p>
         <input
           name="nombre"
           required
