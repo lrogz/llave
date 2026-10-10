@@ -113,6 +113,7 @@ export default function Login() {
                   <span className="relative flex">
                   <input
                     type={verContrasena ? "text" : "password"}
+                    aria-label="Contraseña"
                     required
                     minLength={8}
                     autoComplete={modo === "crear" ? "new-password" : "current-password"}
