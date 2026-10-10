@@ -3,7 +3,9 @@ import { salir } from "@/app/actions";
 import { Logo } from "./Logo";
 
 const ITEMS = [
+  { texto: "Hoy", href: "/hoy" },
   { texto: "Propiedades", href: "/" },
+  { texto: "Personas", href: "/personas" },
   { texto: "Tickets", href: "/tickets" },
   { texto: "Bandeja", href: null },
   { texto: "Proveedores", href: null },
@@ -11,7 +13,7 @@ const ITEMS = [
   { texto: "Documentos", href: null },
 ] as const;
 
-export function Menu({ activo, nombreOrg }: { activo: "Propiedades" | "Tickets"; nombreOrg: string }) {
+export function Menu({ activo, nombreOrg }: { activo: "Hoy" | "Propiedades" | "Personas" | "Tickets"; nombreOrg: string }) {
   return (
     <nav
       aria-label="Secciones"

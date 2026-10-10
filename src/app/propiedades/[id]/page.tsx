@@ -21,7 +21,8 @@ type Propiedad = {
   tipo: string;
   renta_mensual: number | null;
   codigo_qr: string;
-  duenos: { nombre: string; telefono: string | null } | null;
+  duenos: { id: string; nombre: string; telefono: string | null } | null;
+  contratos: { activo: boolean; fin: string; inquilinos: { id: string; nombre: string } | null }[];
   tickets: { id: string; folio: number; titulo: string; estado: string; created_at: string }[];
 };
 
@@ -41,7 +42,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
 
   const { data } = await supabase
     .from("propiedades")
-    .select("id, nombre, direccion, colonia, tipo, renta_mensual, codigo_qr, duenos(nombre, telefono), tickets(id, folio, titulo, estado, created_at)")
+    .select("id, nombre, direccion, colonia, tipo, renta_mensual, codigo_qr, duenos(id, nombre, telefono), contratos(activo, fin, inquilinos(id, nombre)), tickets(id, folio, titulo, estado, created_at)")
     .eq("id", id)
     .order("created_at", { referencedTable: "tickets", ascending: false })
     .maybeSingle();
@@ -90,7 +91,9 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               <h2 className="font-bold">Dueño</h2>
               {p.duenos ? (
                 <p className="text-sm">
-                  <span className="font-semibold">{p.duenos.nombre}</span>
+                  <Link href={`/personas/duenos/${p.duenos.id}`} className="font-semibold text-verde hover:underline">
+                    {p.duenos.nombre}
+                  </Link>
                   {p.duenos.telefono ? <span className="text-gris"> · {p.duenos.telefono}</span> : null}
                 </p>
               ) : (
@@ -103,6 +106,26 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                   <Boton className="self-start">Guardar dueño</Boton>
                 </form>
               )}
+              {(() => {
+                const c = p.contratos.find((x) => x.activo);
+                return (
+                  <p className="border-t border-borde-suave pt-3 text-sm">
+                    <span className="text-gris">Inquilino: </span>
+                    {c?.inquilinos ? (
+                      <>
+                        <Link href={`/personas/inquilinos/${c.inquilinos.id}`} className="font-semibold text-verde hover:underline">
+                          {c.inquilinos.nombre}
+                        </Link>
+                        <span className="text-gris"> · hasta {formatoFecha(c.fin)}</span>
+                      </>
+                    ) : (
+                      <Link href="/personas?ver=inquilinos" className="font-semibold text-verde hover:underline">
+                        Agregar inquilino
+                      </Link>
+                    )}
+                  </p>
+                );
+              })()}
               {p.renta_mensual != null && (
                 <p className="border-t border-borde-suave pt-3 text-sm">
                   Renta <span className="font-mono">{pesos.format(p.renta_mensual)}</span>
