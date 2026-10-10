@@ -55,6 +55,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    5. `supabase/migrations/20261010080000_cobro_rentas.sql`
    6. `supabase/migrations/20261010090000_servicios_documentos.sql`
    7. `supabase/migrations/20261010100000_equipo.sql`
+   8. `supabase/migrations/20261010110000_avisos.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -89,6 +90,19 @@ Variables (Supabase › Project Settings › API):
 5. Abre la dirección, entra con tu correo y listo.
 
 Límite de Vercel: cada envío al servidor acepta hasta ~4.5 MB. Las fotos se reducen en el navegador antes de subir; los PDF de cotización y comprobantes deben pesar menos de 4 MB. Las fotos y videos del inquilino (reporte por QR) van directo a Supabase y aceptan hasta 100 MB.
+
+### 4. Avisos automáticos por correo (opcional)
+
+1. Crea una cuenta en [resend.com](https://resend.com) y verifica un dominio tuyo (Domains › Add domain, agrega los registros DNS).
+2. Crea una API key (API Keys › Create).
+3. En Vercel › Settings › Environment Variables agrega:
+   - `RESEND_API_KEY` = la llave de Resend
+   - `AVISOS_REMITENTE` = `Black Key <avisos@tudominio.mx>`
+   - `CRON_SECRET` = cualquier texto largo y secreto
+4. Redeploy. Cada mañana (8:00 a. m. de CDMX) corre `/api/cron/avisos` (ver `vercel.json`).
+5. Para que los correos de entrada (link mágico) no se topen con el límite gratuito de Supabase, en Supabase › Authentication › Emails › SMTP Settings usa: host `smtp.resend.com`, puerto `465`, usuario `resend`, contraseña = tu API key, remitente del mismo dominio.
+
+Mientras tanto se puede entrar con **correo y contraseña** (Ajustes › Tu contraseña).
 
 ## Seguridad
 

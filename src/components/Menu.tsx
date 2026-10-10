@@ -2,7 +2,7 @@ import Link from "next/link";
 import { salir } from "@/app/actions";
 import { Logo } from "./Logo";
 
-type Seccion = "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Proveedores" | "Documentos" | "Equipo";
+type Seccion = "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Proveedores" | "Documentos" | "Equipo" | "Ajustes";
 
 const ITEMS: { texto: Seccion | "Bandeja"; href: string | null; corto?: string }[] = [
   { texto: "Hoy", href: "/hoy" },
@@ -14,6 +14,7 @@ const ITEMS: { texto: Seccion | "Bandeja"; href: string | null; corto?: string }
   { texto: "Pagos", href: "/pagos" },
   { texto: "Documentos", href: "/documentos" },
   { texto: "Equipo", href: "/equipo" },
+  { texto: "Ajustes", href: "/ajustes" },
 ];
 
 // En el celular: barra abajo con lo más usado y "Más" para lo demás.
