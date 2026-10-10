@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { sesionConOrg } from "@/lib/sesion";
 import { BUCKET, QUIEN_PAGA, TIPOS_PERMITIDOS, extension } from "@/lib/datos";
 
-const MAX_COTIZACION = 9 * 1024 * 1024;
+// Vercel acepta hasta ~4.5 MB por envío; las fotos se reducen en el navegador antes de subir.
+const MAX_COTIZACION = 4 * 1024 * 1024;
 const quienPagaValido = new Set<string>(QUIEN_PAGA.map(([v]) => v));
 
 function texto(form: FormData, campo: string, max = 200) {
@@ -103,7 +104,7 @@ export async function subirCotizacion(form: FormData) {
 
   if (archivo instanceof File && archivo.size > 0) {
     if (!TIPOS_PERMITIDOS.includes(archivo.type)) throw new Error("Formato de archivo no aceptado.");
-    if (archivo.size > MAX_COTIZACION) throw new Error("El archivo pesa más de 9 MB.");
+    if (archivo.size > MAX_COTIZACION) throw new Error("El archivo pesa más de 4 MB.");
     archivoPath = `${ticket.organizacion_id}/cotizaciones/${ticket.id}/${randomUUID()}.${extension(archivo.name, archivo.type)}`;
     const { error } = await supabase.storage.from(BUCKET).upload(archivoPath, archivo, { contentType: archivo.type });
     if (error) throw new Error("No pudimos subir el archivo.");
@@ -218,7 +219,7 @@ export async function marcarResuelto(form: FormData) {
   // Fotos de cómo quedó (para el antes y después del reporte al dueño).
   const fotos = form.getAll("fotos_despues").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 3);
   const total = fotos.reduce((s, f) => s + f.size, 0);
-  if (total > MAX_COTIZACION) throw new Error("Las fotos pesan más de 9 MB en total.");
+  if (total > MAX_COTIZACION) throw new Error("Las fotos pesan más de 4 MB en total. Sube menos fotos.");
   for (const foto of fotos) {
     if (!foto.type.startsWith("image/") || !TIPOS_PERMITIDOS.includes(foto.type)) throw new Error("Solo fotos (JPG, PNG, WEBP o HEIC).");
     const path = `${ticket.organizacion_id}/tickets/${ticket.id}/despues-${randomUUID()}.${extension(foto.name, foto.type)}`;

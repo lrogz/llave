@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { Avance } from "@/components/Avance";
 import { Boton } from "@/components/Boton";
+import { InputComprimido } from "@/components/InputComprimido";
 import { Cargando, Menu } from "@/components/Menu";
 import { sesion } from "@/lib/sesion";
 import {
@@ -264,8 +265,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                       <input type="checkbox" name="incluye_materiales" className="size-5 accent-verde" /> Incluye materiales
                     </label>
                     <label className="flex flex-col gap-1 text-sm font-semibold">
-                      Archivo (PDF, foto o nota de voz)
-                      <input type="file" name="archivo" accept="application/pdf,image/*,audio/*" className="text-sm font-normal" />
+                      Archivo (PDF, foto o nota de voz · máx. 4 MB)
+                      <InputComprimido name="archivo" accept="application/pdf,image/*,audio/*" className="text-sm font-normal" />
                     </label>
                     <Boton enviando="Subiendo…">Agregar a la comparación</Boton>
                   </form>
@@ -443,8 +444,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                 </fieldset>
                 <label className="flex flex-col gap-1 text-sm text-[#B9C8C1]">
                   Fotos de cómo quedó (opcional, hasta 3) — el dueño las ve en su reporte
-                  <input
-                    type="file"
+                  <InputComprimido
                     name="fotos_despues"
                     accept="image/jpeg,image/png,image/webp,image/heic"
                     multiple

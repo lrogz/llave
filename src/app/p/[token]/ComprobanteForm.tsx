@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { InputComprimido } from "@/components/InputComprimido";
 import { subirComprobante } from "./actions";
 
 export function ComprobanteForm({ token }: { token: string }) {
@@ -26,14 +27,13 @@ export function ComprobanteForm({ token }: { token: string }) {
     >
       <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-borde bg-white px-4 py-5 text-center">
         <span className="font-bold">{nombre || "Toca para elegir tu comprobante"}</span>
-        <span className="text-sm text-gris">Foto o PDF · máximo 9 MB</span>
-        <input
-          type="file"
+        <span className="text-sm text-gris">Foto o PDF · máximo 4 MB</span>
+        <InputComprimido
           name="comprobante"
           accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
           required
           className="sr-only"
-          onChange={(e) => setNombre(e.target.files?.[0]?.name ?? "")}
+          onElegir={setNombre}
         />
       </label>
       {error && (

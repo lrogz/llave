@@ -69,6 +69,22 @@ Variables (Supabase › Project Settings › API):
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor. La usan las páginas por link (`/r`, `/t`, `/c`, `/a`), siempre filtrando por token. **Nunca** le pongas prefijo `NEXT_PUBLIC_` ni la subas al repo. |
 | `NEXT_PUBLIC_SITE_URL` | Tu dominio público (para los links de WhatsApp). En local se detecta solo. |
 
+### 3. Publicar en Vercel
+
+1. En [vercel.com](https://vercel.com) entra con GitHub → **Add New… › Project** → importa `lrogz/llave`.
+2. En **Environment Variables** agrega las 4 (los valores salen de Supabase › Project Settings › API Keys):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (secreta: solo aquí, nunca en el código ni en el chat)
+   - `NEXT_PUBLIC_SITE_URL` = la dirección que te dé Vercel, p. ej. `https://blackkey.vercel.app`
+3. **Deploy**. Cada `git push` a `main` vuelve a publicar solo.
+4. En Supabase › Authentication › URL Configuration:
+   - **Site URL**: la dirección de Vercel.
+   - **Redirect URLs**: agrega `https://TU-DIRECCION/auth/callback`.
+5. Abre la dirección, entra con tu correo y listo.
+
+Límite de Vercel: cada envío al servidor acepta hasta ~4.5 MB. Las fotos se reducen en el navegador antes de subir; los PDF de cotización y comprobantes deben pesar menos de 4 MB. Las fotos y videos del inquilino (reporte por QR) van directo a Supabase y aceptan hasta 100 MB.
+
 ## Seguridad
 
 - Cada administradora solo ve sus datos (RLS con `es_miembro` / `es_admin`), también en archivos: cada una solo sube y lee en su carpeta del bucket `llave`.
