@@ -145,6 +145,13 @@ export function Acceso({ modoInicial = "contrasena" }: { modoInicial?: "contrase
                 </p>
               )}
             </form>
+            {modo === "crear" && (
+              <p className="mt-3 text-center text-xs text-gris">
+                Al crear tu cuenta aceptas los{" "}
+                <a href="/terminos" target="_blank" className="underline">términos</a> y el{" "}
+                <a href="/privacidad" target="_blank" className="underline">aviso de privacidad</a>.
+              </p>
+            )}
             <p className="mt-4 text-center text-sm text-gris">
               {modo === "crear" ? (
                 <button type="button" onClick={() => setModo("contrasena")} className="font-semibold text-verde underline">

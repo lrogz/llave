@@ -116,10 +116,17 @@ Precio: **$110 MXN por propiedad al mes**, gratis hasta 3 propiedades, 30 días 
 3. Developers › API keys › copia la **Secret key** (`sk_live_…`).
 4. Developers › Webhooks › Add endpoint: `https://TU-DIRECCION/api/stripe/webhook` con los eventos
    `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. Copia el **Signing secret** (`whsec_…`).
-5. Settings › Billing › Customer portal: actívalo (para que cambien tarjeta, vean facturas o cancelen).
+5. Settings › Billing › Customer portal: actívalo (para que cambien tarjeta, vean facturas o cancelen) y en cancelaciones elige **"al final del periodo de facturación"** (así lo dicen los términos).
 6. En Vercel agrega `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` y Redeploy.
 
 Sin estas variables la app funciona igual; la pantalla Plan solo dice que los pagos no están conectados.
+
+### 6. Aviso de privacidad y términos
+
+Están en `/privacidad` y `/terminos` (ligados desde la página de venta, el registro y los formularios del inquilino). Antes de cobrar:
+
+1. En Vercel agrega `LEGAL_RESPONSABLE` (tu nombre o razón social), `LEGAL_DOMICILIO` y `LEGAL_CORREO` y Redeploy.
+2. Pide a un abogado que los revise; son una base, no asesoría legal.
 
 ## Seguridad
 

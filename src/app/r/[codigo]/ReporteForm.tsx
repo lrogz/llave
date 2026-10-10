@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { PieLegal } from "@/components/PieLegal";
 import {
   BUCKET,
   CATEGORIAS,
@@ -239,6 +240,7 @@ export function ReporteForm({ codigo }: { codigo: string }) {
         {enviando ? estado.avance : "Enviar reporte"}
       </button>
       <p className="-mt-2 text-center text-xs text-gris">Lo recibe tu administrador al instante.</p>
+      <PieLegal />
     </form>
   );
 }

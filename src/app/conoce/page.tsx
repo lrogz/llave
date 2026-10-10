@@ -205,6 +205,10 @@ export default function Conoce() {
       <footer className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-8 text-sm text-gris">
         <Logo />
         <span>Hecho en Querétaro para administradoras de todo México.</span>
+        <nav className="flex gap-4">
+          <Link href="/privacidad" className="hover:text-tinta">Aviso de privacidad</Link>
+          <Link href="/terminos" className="hover:text-tinta">Términos</Link>
+        </nav>
       </footer>
     </div>
   );

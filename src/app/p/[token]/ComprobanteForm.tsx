@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { InputComprimido } from "@/components/InputComprimido";
+import { PieLegal } from "@/components/PieLegal";
 import { subirComprobante } from "./actions";
 
 export function ComprobanteForm({ token }: { token: string }) {
@@ -44,6 +45,7 @@ export function ComprobanteForm({ token }: { token: string }) {
       <button type="submit" disabled={pendiente} className="min-h-13 rounded-xl bg-verde text-base font-bold text-white disabled:opacity-60">
         {pendiente ? "Enviando…" : "Enviar comprobante"}
       </button>
+      <PieLegal />
     </form>
   );
 }
