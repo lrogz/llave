@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { supabaseConfigurado } from "@/lib/supabase/config";
+import { supabaseConfigurado, supabaseUrl } from "@/lib/supabase/config";
 import { Logo } from "@/components/Logo";
 
 type Modo = "contrasena" | "link" | "crear";
@@ -13,6 +13,7 @@ export default function Login() {
   const [modo, setModo] = useState<Modo>("contrasena");
   const [email, setEmail] = useState("");
   const [contrasena, setContrasena] = useState("");
+  const [verContrasena, setVerContrasena] = useState(false);
   const [estado, setEstado] = useState<"inicio" | "enviando" | "enviado" | "error">("inicio");
   const [detalle, setDetalle] = useState("");
 
@@ -109,15 +110,26 @@ export default function Login() {
               {modo !== "link" && (
                 <label className="flex flex-col gap-1.5 text-sm font-semibold">
                   Contraseña
+                  <span className="relative flex">
                   <input
-                    type="password"
+                    type={verContrasena ? "text" : "password"}
                     required
                     minLength={8}
                     autoComplete={modo === "crear" ? "new-password" : "current-password"}
                     value={contrasena}
                     onChange={(e) => setContrasena(e.target.value)}
-                    className="min-h-12 rounded-xl border border-borde px-4 text-base font-normal outline-none focus:border-verde"
+                    className="min-h-12 w-full rounded-xl border border-borde py-0 pr-20 pl-4 text-base font-normal outline-none focus:border-verde"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setVerContrasena((v) => !v)}
+                    aria-label={verContrasena ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    aria-pressed={verContrasena}
+                    className="absolute inset-y-1 right-1 rounded-lg px-3 text-sm font-semibold text-verde hover:bg-fondo"
+                  >
+                    {verContrasena ? "Ocultar" : "Ver"}
+                  </button>
+                  </span>
                 </label>
               )}
               <button type="submit" disabled={estado === "enviando"} className="min-h-12 rounded-xl bg-verde font-bold text-white disabled:opacity-60">
@@ -172,6 +184,9 @@ function explicar(mensaje: string, status?: number) {
   }
   if (m.includes("password")) return mensaje.includes("8") ? "La contraseña debe tener al menos 8 caracteres." : `Contraseña no válida: ${mensaje}`;
   if (m.includes("invalid") && m.includes("email")) return "Ese correo no es válido. Revisa que esté completo.";
+  if (m.includes("unexpected token") || m.includes("doctype") || m.includes("not valid json")) {
+    return `Supabase respondió con una página en vez de datos. Revisa en Vercel que NEXT_PUBLIC_SUPABASE_URL sea solo https://TU-PROYECTO.supabase.co (ahora apunta a ${supabaseUrl || "nada"}) y la llave publicable; luego Redeploy.`;
+  }
   if (m.includes("failed to fetch") || m.includes("network") || m.includes("invalid url") || m.includes("api key")) {
     return "No pudimos conectar con Supabase. Revisa la URL y la llave publicable en las variables de entorno.";
   }
