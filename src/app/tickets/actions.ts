@@ -215,6 +215,25 @@ export async function marcarResuelto(form: FormData) {
   const calificacion = Math.round(numero(form, "calificacion") ?? 0);
   const valida = calificacion >= 1 && calificacion <= 5 ? calificacion : null;
 
+  // Fotos de cómo quedó (para el antes y después del reporte al dueño).
+  const fotos = form.getAll("fotos_despues").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 3);
+  const total = fotos.reduce((s, f) => s + f.size, 0);
+  if (total > MAX_COTIZACION) throw new Error("Las fotos pesan más de 9 MB en total.");
+  for (const foto of fotos) {
+    if (!foto.type.startsWith("image/") || !TIPOS_PERMITIDOS.includes(foto.type)) throw new Error("Solo fotos (JPG, PNG, WEBP o HEIC).");
+    const path = `${ticket.organizacion_id}/tickets/${ticket.id}/despues-${randomUUID()}.${extension(foto.name, foto.type)}`;
+    const { error } = await supabase.storage.from(BUCKET).upload(path, foto, { contentType: foto.type });
+    if (error) throw new Error("No pudimos subir la foto.");
+    await supabase.from("ticket_media").insert({
+      organizacion_id: ticket.organizacion_id,
+      ticket_id: ticket.id,
+      tipo: "foto",
+      storage_path: path,
+      momento: "despues",
+      subido_por: "administradora",
+    });
+  }
+
   await supabase
     .from("tickets")
     .update({ estado: "resuelto", resuelto_at: new Date().toISOString(), calificacion: valida })

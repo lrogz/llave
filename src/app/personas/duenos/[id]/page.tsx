@@ -8,6 +8,10 @@ import { campo, Etiqueta, LineaTiempo, ListaPendientes, NuevaNota, NuevoPendient
 import { CANALES, FRECUENCIAS, plantillas } from "@/lib/crm";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
+import { inicioDeMes, mesAnterior } from "@/lib/reporte";
+import { origen } from "@/lib/util";
+import { hoyMX } from "@/lib/crm";
 import { asignarPropiedad, guardarDatosDueno } from "../../actions";
 
 export const metadata: Metadata = { title: "Dueño · Black Key" };
@@ -59,7 +63,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   if (!data) notFound();
   const d = data as Dueno;
 
-  const [props, libres, notas, pendientes, aprobaciones] = await Promise.all([
+  const [props, libres, notas, pendientes, aprobaciones, reportes] = await Promise.all([
     supabase
       .from("propiedades")
       .select("id, nombre, estado, renta_mensual, tickets(id, folio, titulo, estado, created_at, resuelto_at)")
@@ -79,7 +83,12 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
       .eq("dueno_id", id)
       .order("created_at", { ascending: false })
       .limit(30),
+    supabase.from("reportes_dueno").select("periodo, token, visto_at, created_at").eq("dueno_id", id).order("periodo", { ascending: false }).limit(12),
   ]);
+  const base = await origen();
+  const mesActual = inicioDeMes(hoyMX());
+  const meses = [mesAnterior(mesActual), mesActual];
+  const porMes = new Map(((reportes.data ?? []) as ReporteFila[]).map((r) => [r.periodo, r]));
 
   const propiedades = (props.data ?? []) as Prop[];
   const volver = `/personas/duenos/${id}`;
@@ -204,6 +213,16 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                   </Boton>
                 </form>
               )}
+            </section>
+
+            <section id="reporte" aria-label="Reporte mensual" className="flex flex-col gap-1 rounded-2xl bg-white p-5">
+              <h2 className="font-bold">Reporte mensual</h2>
+              <p className="text-sm text-gris">Rentas, trabajos con fotos de antes y después, gastos y saldo. Un link para mandar por WhatsApp.</p>
+              <ul className="flex flex-col divide-y divide-borde-suave">
+                {meses.map((m) => (
+                  <FilaReporte key={m} dueno={d} periodo={m} reporte={porMes.get(m)} base={base} volver={volver} />
+                ))}
+              </ul>
             </section>
 
             <section aria-label="Datos del dueño" className="rounded-2xl bg-white p-5">

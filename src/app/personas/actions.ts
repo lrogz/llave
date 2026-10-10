@@ -169,3 +169,17 @@ export async function marcarPendiente(f: FormData) {
   await supabase.from("pendientes").update({ hecho_at: hecho ? new Date().toISOString() : null }).eq("id", id);
   revalidatePath(volverA(f));
 }
+
+// Crea (o reutiliza) el link del reporte mensual del dueño.
+export async function crearReporte(f: FormData) {
+  const { supabase, org } = await sesionConOrg();
+  const duenoId = txt(f, "dueno_id", 40);
+  const periodo = txt(f, "periodo", 10);
+  if (!esUuid(duenoId) || !/^\d{4}-\d{2}-01$/.test(periodo)) return;
+  const { data: d } = await supabase.from("duenos").select("id").eq("id", duenoId).maybeSingle();
+  if (!d) return;
+  await supabase
+    .from("reportes_dueno")
+    .upsert({ organizacion_id: org.id, dueno_id: d.id, periodo }, { onConflict: "dueno_id,periodo", ignoreDuplicates: true });
+  revalidatePath(volverA(f));
+}

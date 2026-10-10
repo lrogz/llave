@@ -6,6 +6,8 @@ import { ListaPendientes, NuevoPendiente, type Pendiente } from "@/components/Se
 import { diasEntre, fechaConAnio, haceHoras, hoyMX, plantillas } from "@/lib/crm";
 import { formatoFecha, formatoFechaHora, linkWhatsApp, origen, pesos } from "@/lib/util";
 import { sesionConOrg } from "@/lib/sesion";
+import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
+import { inicioDeMes, mesAnterior, mesTexto } from "@/lib/reporte";
 
 export const metadata: Metadata = { title: "Hoy · Black Key" };
 
@@ -45,7 +47,8 @@ async function Contenido() {
   const hace48h = haceHoras(48);
   const hace3d = haceHoras(72);
 
-  const [pend, contratos, aprob, parados, cobros] = await Promise.all([
+  const mesPasado = mesAnterior(inicioDeMes(hoy));
+  const [pend, contratos, aprob, parados, cobros, duenosQ] = await Promise.all([
     supabase
       .from("pendientes")
       .select("id, titulo, de_quien, vence, hecho_at, duenos(id, nombre), inquilinos(id, nombre), propiedades(id, nombre)")
@@ -75,6 +78,12 @@ async function Contenido() {
       .select("id, monto, vence, contratos(inquilinos(id, nombre, telefono), propiedades(nombre))")
       .or(`estado.eq.vencido,and(estado.eq.pendiente,vence.lt.${hoy})`)
       .order("vence"),
+    supabase
+      .from("duenos")
+      .select("id, nombre, telefono, frecuencia_reporte, propiedades(id), reportes_dueno(periodo, token, visto_at, created_at)")
+      .neq("frecuencia_reporte", "solo_cambios")
+      .eq("reportes_dueno.periodo", mesPasado)
+      .order("nombre"),
   ]);
 
   const pendientes = (pend.data ?? []) as unknown as Pendiente[];
@@ -86,6 +95,17 @@ async function Contenido() {
   const ticketsParados = (parados.data ?? []) as unknown as TicketP[];
   const atrasados = (cobros.data ?? []) as unknown as CobroA[];
   const base = await origen();
+  // Reportes del mes pasado: falta prepararlos o el dueño todavía no los abre (hasta 7 días después de mandarlos).
+  const reportes = ((duenosQ.data ?? []) as unknown as {
+    id: string;
+    nombre: string;
+    telefono: string | null;
+    propiedades: { id: string }[];
+    reportes_dueno: ReporteFila[];
+  }[])
+    .filter((d) => d.propiedades.length > 0)
+    .map((d) => ({ d, r: d.reportes_dueno[0] }))
+    .filter(({ r }) => !r || (!r.visto_at && diasEntre(r.created_at.slice(0, 10), hoy) <= 7));
 
   const tarjetas = [
     { n: urgentes.length, texto: "pendientes para hoy o vencidos", href: "#pendientes" },
@@ -93,6 +113,7 @@ async function Contenido() {
     { n: sinRespuesta.length, texto: "aprobaciones sin respuesta", href: "#aprobaciones" },
     { n: ticketsParados.length, texto: "tickets parados +3 días", href: "#tickets" },
     { n: atrasados.length, texto: "rentas atrasadas", href: "#rentas" },
+    { n: reportes.filter(({ r }) => !r).length, texto: "reportes a dueños por preparar", href: "#reportes" },
   ];
   const nada = tarjetas.every((t) => t.n === 0);
   const volver = "/hoy";
@@ -132,6 +153,12 @@ async function Contenido() {
           </section>
 
           <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
+            <Bloque id="reportes" titulo={`Reportes de ${mesTexto(mesPasado)} a dueños`} vacio="Todos los dueños ya tienen y abrieron su reporte.">
+              {reportes.map(({ d, r }) => (
+                <FilaReporte key={d.id} dueno={d} periodo={mesPasado} reporte={r} base={base} volver={volver} conNombre />
+              ))}
+            </Bloque>
+
             <Bloque id="contratos" titulo="Contratos por vencer" vacio="Ningún contrato vence en los próximos 90 días.">
               {porVencer.map((c) => {
                 const d = diasEntre(hoy, c.fin);

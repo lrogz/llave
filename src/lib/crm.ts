@@ -70,6 +70,8 @@ export const plantillas = {
     `Hola ${primerNombre(inquilino)}, te recuerdo que está pendiente la renta de ${propiedad} por ${monto}. Si ya la pagaste, ¿me compartes el comprobante? ¡Gracias!`,
   aprobacionPendiente: (dueno: string, ticket: string, link: string) =>
     `Hola ${primerNombre(dueno)}, sigue pendiente tu aprobación para "${ticket}". Aquí puedes ver la cotización y aprobar con un clic: ${link}`,
+  reporte: (dueno: string, mes: string, link: string) =>
+    `Hola ${primerNombre(dueno)}, aquí está el reporte de ${mes} de tus propiedades: rentas, trabajos con fotos y tu saldo. ${link}`,
   saludoDueno: (dueno: string) => `Hola ${primerNombre(dueno)}, te escribo de la administración sobre tus propiedades.`,
   saludoInquilino: (inquilino: string) => `Hola ${primerNombre(inquilino)}, te escribo de la administración.`,
 };

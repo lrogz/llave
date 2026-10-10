@@ -441,6 +441,16 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                     </label>
                   ))}
                 </fieldset>
+                <label className="flex flex-col gap-1 text-sm text-[#B9C8C1]">
+                  Fotos de cómo quedó (opcional, hasta 3) — el dueño las ve en su reporte
+                  <input
+                    type="file"
+                    name="fotos_despues"
+                    accept="image/jpeg,image/png,image/webp,image/heic"
+                    multiple
+                    className="text-sm text-white file:mr-3 file:min-h-10 file:rounded-xl file:border-0 file:bg-white/10 file:px-3 file:font-bold file:text-white"
+                  />
+                </label>
                 <Boton estilo="menta" enviando="Cerrando…" className="self-start">
                   Marcar como resuelto
                 </Boton>
