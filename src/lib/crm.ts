@@ -66,8 +66,12 @@ export const primerNombre = (n: string) => n.trim().split(/\s+/)[0] ?? n;
 export const plantillas = {
   renovacion: (inquilino: string, propiedad: string, fin: string) =>
     `Hola ${primerNombre(inquilino)}, ¿cómo estás? Tu contrato de ${propiedad} termina el ${fin}. ¿Te gustaría renovar? Con gusto te comparto las condiciones.`,
-  cobranza: (inquilino: string, propiedad: string, monto: string) =>
-    `Hola ${primerNombre(inquilino)}, te recuerdo que está pendiente la renta de ${propiedad} por ${monto}. Si ya la pagaste, ¿me compartes el comprobante? ¡Gracias!`,
+  cobranza: (inquilino: string, propiedad: string, monto: string, link?: string) =>
+    link
+      ? `Hola ${primerNombre(inquilino)}, te recuerdo que está pendiente la renta de ${propiedad} por ${monto}. Aquí ves los datos para depositar y puedes subir tu comprobante: ${link} ¡Gracias!`
+      : `Hola ${primerNombre(inquilino)}, te recuerdo que está pendiente la renta de ${propiedad} por ${monto}. Si ya la pagaste, ¿me compartes el comprobante? ¡Gracias!`,
+  avisoRenta: (inquilino: string, propiedad: string, monto: string, vence: string, link: string) =>
+    `Hola ${primerNombre(inquilino)}, la renta de ${propiedad} por ${monto} vence el ${vence}. Datos para depositar y para subir tu comprobante: ${link}`,
   aprobacionPendiente: (dueno: string, ticket: string, link: string) =>
     `Hola ${primerNombre(dueno)}, sigue pendiente tu aprobación para "${ticket}". Aquí puedes ver la cotización y aprobar con un clic: ${link}`,
   reporte: (dueno: string, mes: string, link: string) =>

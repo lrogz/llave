@@ -23,6 +23,8 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 | Importar cartera desde Excel/CSV | `/propiedades/importar` | Administradora |
 | Tickets | `/tickets` | Administradora |
 | Ticket y comparación | `/tickets/[id]` | Administradora |
+| Pagos: rentas del mes | `/pagos` | Administradora |
+| Pago de renta y comprobante | `/p/[token]` | Inquilino (sin cuenta) |
 | Reporte mensual del dueño | `/e/[token]` | Dueño (sin cuenta) |
 | Reportar un problema | `/r/[codigo]` | Inquilino (desde el QR) |
 | Avance del reporte | `/t/[token]` | Inquilino |
@@ -47,6 +49,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    2. `supabase/migrations/20261008040000_folio_por_administradora.sql`
    3. `supabase/migrations/20261010060000_crm_seguimiento.sql`
    4. `supabase/migrations/20261010070000_reporte_dueno.sql`
+   5. `supabase/migrations/20261010080000_cobro_rentas.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App

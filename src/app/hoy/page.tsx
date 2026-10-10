@@ -29,7 +29,9 @@ type TicketP = { id: string; folio: number; titulo: string; estado: string; upda
 type CobroA = {
   id: string;
   monto: number;
+  recargo: number;
   vence: string;
+  token: string;
   contratos: { inquilinos: { id: string; nombre: string; telefono: string | null } | null; propiedades: { nombre: string } | null } | null;
 };
 
@@ -48,7 +50,8 @@ async function Contenido() {
   const hace3d = haceHoras(72);
 
   const mesPasado = mesAnterior(inicioDeMes(hoy));
-  const [pend, contratos, aprob, parados, cobros, duenosQ] = await Promise.all([
+  await supabase.rpc("actualizar_cobros", { org: org.id }); // genera rentas del mes y marca atrasos
+  const [pend, contratos, aprob, parados, cobros, duenosQ, porRevisar] = await Promise.all([
     supabase
       .from("pendientes")
       .select("id, titulo, de_quien, vence, hecho_at, duenos(id, nombre), inquilinos(id, nombre), propiedades(id, nombre)")
@@ -75,7 +78,7 @@ async function Contenido() {
       .order("updated_at"),
     supabase
       .from("cobros_renta")
-      .select("id, monto, vence, contratos(inquilinos(id, nombre, telefono), propiedades(nombre))")
+      .select("id, monto, recargo, vence, token, contratos(inquilinos(id, nombre, telefono), propiedades(nombre))")
       .or(`estado.eq.vencido,and(estado.eq.pendiente,vence.lt.${hoy})`)
       .order("vence"),
     supabase
@@ -84,6 +87,7 @@ async function Contenido() {
       .neq("frecuencia_reporte", "solo_cambios")
       .eq("reportes_dueno.periodo", mesPasado)
       .order("nombre"),
+    supabase.from("cobros_renta").select("id", { count: "exact", head: true }).eq("estado", "por_confirmar"),
   ]);
 
   const pendientes = (pend.data ?? []) as unknown as Pendiente[];
@@ -113,6 +117,7 @@ async function Contenido() {
     { n: sinRespuesta.length, texto: "aprobaciones sin respuesta", href: "#aprobaciones" },
     { n: ticketsParados.length, texto: "tickets parados +3 días", href: "#tickets" },
     { n: atrasados.length, texto: "rentas atrasadas", href: "#rentas" },
+    { n: porRevisar.count ?? 0, texto: "comprobantes de pago por revisar", href: "/pagos" },
     { n: reportes.filter(({ r }) => !r).length, texto: "reportes a dueños por preparar", href: "#reportes" },
   ];
   const nada = tarjetas.every((t) => t.n === 0);
@@ -217,12 +222,12 @@ async function Contenido() {
                   <Fila
                     key={c.id}
                     href={i ? `/personas/inquilinos/${i.id}` : undefined}
-                    titulo={`${i?.nombre ?? "Inquilino"} · ${pesos.format(c.monto)}`}
+                    titulo={`${i?.nombre ?? "Inquilino"} · ${pesos.format(Number(c.monto) + Number(c.recargo ?? 0))}`}
                     detalle={`${c.contratos?.propiedades?.nombre ?? ""} · venció ${formatoFecha(c.vence)}`}
                     urgente
                     accion={
                       i?.telefono
-                        ? { texto: "Recordar pago", href: linkWhatsApp(i.telefono, plantillas.cobranza(i.nombre, c.contratos?.propiedades?.nombre ?? "tu casa", pesos.format(c.monto))) }
+                        ? { texto: "Recordar pago", href: linkWhatsApp(i.telefono, plantillas.cobranza(i.nombre, c.contratos?.propiedades?.nombre ?? "tu casa", pesos.format(Number(c.monto) + Number(c.recargo ?? 0)), `${base}/p/${c.token}`)) }
                         : undefined
                     }
                   />

@@ -8,6 +8,7 @@ import { campo, Etiqueta, LineaTiempo, ListaPendientes, NuevaNota, NuevoPendient
 import { diasEntre, fechaConAnio, hoyMX, mediodia, plantillas } from "@/lib/crm";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { origen } from "@/lib/util";
 import { guardarDatosInquilino } from "../../actions";
 
 export const metadata: Metadata = { title: "Inquilino · Black Key" };
@@ -29,7 +30,7 @@ type Contrato = {
   activo: boolean;
   created_at: string;
   propiedades: { id: string; nombre: string; duenos: { id: string; nombre: string } | null } | null;
-  cobros_renta: { id: string; periodo: string; monto: number; vence: string; estado: string; pagado_at: string | null }[];
+  cobros_renta: { id: string; periodo: string; monto: number; recargo: number; vence: string; estado: string; pagado_at: string | null; token: string }[];
 };
 
 export default function FichaInquilino({ params }: { params: Promise<{ id: string }> }) {
@@ -52,7 +53,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const [cs, notas, pendientes] = await Promise.all([
     supabase
       .from("contratos")
-      .select("id, inicio, fin, renta, dia_pago, activo, created_at, propiedades(id, nombre, duenos(id, nombre)), cobros_renta(id, periodo, monto, vence, estado, pagado_at)")
+      .select("id, inicio, fin, renta, dia_pago, activo, created_at, propiedades(id, nombre, duenos(id, nombre)), cobros_renta(id, periodo, monto, recargo, vence, estado, pagado_at, token)")
       .eq("inquilino_id", id)
       .order("inicio", { ascending: false }),
     supabase.from("notas").select("id, texto, autor_email, created_at").eq("inquilino_id", id).order("created_at", { ascending: false }).limit(50),
@@ -80,7 +81,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const volver = `/personas/inquilinos/${id}`;
   const dias = activo ? diasEntre(hoy, activo.fin) : null;
   const atrasados = (activo?.cobros_renta ?? []).filter((c) => c.estado === "vencido" || (c.estado === "pendiente" && c.vence < hoy));
-  const deuda = atrasados.reduce((s, c) => s + Number(c.monto), 0);
+  const deuda = atrasados.reduce((s, c) => s + Number(c.monto) + Number(c.recargo ?? 0), 0);
+  const base = await origen();
   const abiertos = tickets.filter((t) => t.estado !== "resuelto" && t.estado !== "cancelado");
 
   const eventos: Evento[] = [
@@ -138,7 +140,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               <Aviso
                 titulo={`Renta atrasada: ${pesos.format(deuda)}`}
                 texto={`${atrasados.length} ${atrasados.length === 1 ? "mes" : "meses"} sin pagar`}
-                link={linkWhatsApp(inq.telefono, plantillas.cobranza(inq.nombre, activo.propiedades?.nombre ?? "tu casa", pesos.format(deuda)))}
+                link={linkWhatsApp(inq.telefono, plantillas.cobranza(inq.nombre, activo.propiedades?.nombre ?? "tu casa", pesos.format(deuda), `${base}/p/${atrasados[0].token}`))}
                 boton="Recordar pago"
               />
             )}
