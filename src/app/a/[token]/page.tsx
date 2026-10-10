@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET, CATEGORIAS, QUIEN_PAGA, etiqueta, formatoFecha, formatoFechaHora, pesos } from "@/lib/datos";
 import { DecisionForm } from "./DecisionForm";
 
-export const metadata: Metadata = { title: "Aprobar cotización · Llave" };
+export const metadata: Metadata = { title: "Aprobar cotización · Black Key" };
 
 export default function AprobacionDueno({ params }: { params: Promise<{ token: string }> }) {
   return (

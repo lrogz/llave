@@ -6,7 +6,7 @@ import { Logo } from "@/components/Logo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatoFecha, formatoFechaHora } from "@/lib/datos";
 
-export const metadata: Metadata = { title: "Avance de tu reporte · Llave" };
+export const metadata: Metadata = { title: "Avance de tu reporte · Black Key" };
 
 export default function SeguimientoTicket({ params }: { params: Promise<{ token: string }> }) {
   return (

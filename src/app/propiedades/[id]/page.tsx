@@ -11,7 +11,7 @@ import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, origen, pesos } f
 import { guardarDueno } from "../actions";
 import { Imprimir } from "./Imprimir";
 
-export const metadata: Metadata = { title: "Propiedad · Llave" };
+export const metadata: Metadata = { title: "Propiedad · Black Key" };
 
 type Propiedad = {
   id: string;

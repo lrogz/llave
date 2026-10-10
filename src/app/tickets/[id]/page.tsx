@@ -22,7 +22,7 @@ import {
 } from "@/lib/util";
 import { aprobarYo, cancelarTicket, enviarAlDueno, invitarProveedor, marcarResuelto, subirCotizacion } from "../actions";
 
-export const metadata: Metadata = { title: "Ticket · Llave" };
+export const metadata: Metadata = { title: "Ticket · Black Key" };
 
 type Proveedor = { id: string; nombre: string; telefono: string | null; es_red: boolean; calificacion: number | null; trabajos: number };
 type Cotizacion = {
@@ -331,7 +331,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                       <span className="font-bold">{p?.nombre ?? "Proveedor"}</span>
                       <span className="flex flex-wrap gap-1.5">
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${p?.es_red ? "bg-[#E8EEFB] text-[#2A4A93]" : "bg-tinta text-white"}`}>
-                          {p?.es_red ? "Red Llave" : "Tu proveedor"}
+                          {p?.es_red ? "Red Black Key" : "Tu proveedor"}
                         </span>
                         {etiquetas.map((e) => (
                           <span key={e} className="rounded-full bg-verde-claro px-2.5 py-0.5 text-xs font-bold text-verde-oscuro">

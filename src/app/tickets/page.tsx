@@ -6,7 +6,7 @@ import { sesion } from "@/lib/sesion";
 import { CATEGORIAS, COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha } from "@/lib/datos";
 import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Tickets · Llave" };
+export const metadata: Metadata = { title: "Tickets · Black Key" };
 
 type Fila = {
   id: string;

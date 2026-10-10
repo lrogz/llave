@@ -7,7 +7,7 @@ const sans = DM_Sans({ variable: "--font-dm-sans", subsets: ["latin"] });
 const mono = DM_Mono({ variable: "--font-dm-mono", subsets: ["latin"], weight: ["500"] });
 
 export const metadata: Metadata = {
-  title: "Llave · Administración de propiedades",
+  title: "Black Key · Administración de propiedades",
   description: "Tus propiedades, tickets y proveedores en un solo lugar. Sin Excel ni WhatsApps sueltos.",
 };
 

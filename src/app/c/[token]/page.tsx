@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET, CATEGORIAS, DISPONIBILIDAD, etiqueta, formatoFecha, formatoFechaHora, pesos } from "@/lib/datos";
 import { ProveedorForm } from "./ProveedorForm";
 
-export const metadata: Metadata = { title: "Solicitud de cotización · Llave" };
+export const metadata: Metadata = { title: "Solicitud de cotización · Black Key" };
 
 export default function SolicitudProveedor({ params }: { params: Promise<{ token: string }> }) {
   return (

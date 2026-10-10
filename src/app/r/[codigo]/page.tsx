@@ -5,7 +5,7 @@ import { Logo } from "@/components/Logo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ReporteForm } from "./ReporteForm";
 
-export const metadata: Metadata = { title: "Reportar un problema · Llave" };
+export const metadata: Metadata = { title: "Reportar un problema · Black Key" };
 
 export default function Reporte({ params }: { params: Promise<{ codigo: string }> }) {
   return (
