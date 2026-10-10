@@ -10,7 +10,7 @@ import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, linkWhatsApp, pes
 import { sesionConOrg } from "@/lib/sesion";
 import { SeccionDocumentos } from "@/components/Documentos";
 import { origen } from "@/lib/util";
-import { guardarDatosInquilino } from "../../actions";
+import { editarContrato, guardarDatosInquilino, nuevoContrato, renovarContrato, terminarContrato } from "../../actions";
 
 export const metadata: Metadata = { title: "Inquilino · Black Key" };
 
@@ -28,6 +28,8 @@ type Contrato = {
   fin: string;
   renta: number;
   dia_pago: number;
+  deposito: number | null;
+  recargo_pct: number | null;
   activo: boolean;
   created_at: string;
   propiedades: { id: string; nombre: string; duenos: { id: string; nombre: string } | null } | null;
@@ -54,7 +56,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const [cs, notas, pendientes] = await Promise.all([
     supabase
       .from("contratos")
-      .select("id, inicio, fin, renta, dia_pago, activo, created_at, propiedades(id, nombre, duenos(id, nombre)), cobros_renta(id, periodo, monto, recargo, vence, estado, pagado_at, token)")
+      .select("id, inicio, fin, renta, dia_pago, deposito, recargo_pct, activo, created_at, propiedades(id, nombre, duenos(id, nombre)), cobros_renta(id, periodo, monto, recargo, vence, estado, pagado_at, token)")
       .eq("inquilino_id", id)
       .order("inicio", { ascending: false }),
     supabase.from("notas").select("id, texto, autor_email, created_at").eq("inquilino_id", id).order("created_at", { ascending: false }).limit(50),
@@ -76,6 +78,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
     .or(filtro)
     .order("created_at", { ascending: false })
     .limit(40);
+  const { data: props } = await supabase.from("propiedades").select("id, nombre, estado").order("nombre");
+  const propiedades = (props ?? []) as { id: string; nombre: string; estado: string }[];
   const tickets = (ts ?? []) as unknown as { id: string; folio: number; titulo: string; estado: string; created_at: string; resuelto_at: string | null; propiedades: { nombre: string } | null }[];
 
   const hoy = hoyMX();
@@ -202,9 +206,115 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                   <dd className="font-mono">{pesos.format(activo.renta)}</dd>
                   <dt className="text-gris">Paga</dt>
                   <dd>el día {activo.dia_pago} de cada mes</dd>
+                  {activo.deposito != null && (
+                    <>
+                      <dt className="text-gris">Depósito</dt>
+                      <dd className="font-mono">{pesos.format(activo.deposito)}</dd>
+                    </>
+                  )}
+                  {Number(activo.recargo_pct) > 0 && (
+                    <>
+                      <dt className="text-gris">Recargo</dt>
+                      <dd>{Number(activo.recargo_pct)}% si paga tarde</dd>
+                    </>
+                  )}
                 </dl>
               ) : (
                 <p className="text-gris">Sin contrato activo.</p>
+              )}
+              {activo ? (
+                <div className="mt-2 flex flex-col gap-2 border-t border-borde-suave pt-3">
+                  <details>
+                    <summary className="cursor-pointer font-semibold text-verde">Renovar</summary>
+                    <form action={renovarContrato} className="mt-2 grid grid-cols-2 gap-2">
+                      <input type="hidden" name="id" value={activo.id} />
+                      <Etiqueta texto="Nuevo fin">
+                        <input type="date" name="fin" required defaultValue={unAnoDespues(activo.fin)} className={campo} />
+                      </Etiqueta>
+                      <Etiqueta texto="Nueva renta">
+                        <input name="renta" inputMode="decimal" defaultValue={activo.renta} className={campo} />
+                      </Etiqueta>
+                      <Boton className="col-span-2 justify-self-start" enviando="Renovando…">
+                        Renovar contrato
+                      </Boton>
+                    </form>
+                  </details>
+                  <details>
+                    <summary className="cursor-pointer font-semibold text-verde">Editar contrato</summary>
+                    <form action={editarContrato} className="mt-2 grid grid-cols-2 gap-2">
+                      <input type="hidden" name="id" value={activo.id} />
+                      <Etiqueta texto="Fin">
+                        <input type="date" name="fin" required defaultValue={activo.fin} className={campo} />
+                      </Etiqueta>
+                      <Etiqueta texto="Renta">
+                        <input name="renta" required inputMode="decimal" defaultValue={activo.renta} className={campo} />
+                      </Etiqueta>
+                      <Etiqueta texto="Día de pago">
+                        <input name="dia_pago" type="number" min={1} max={31} defaultValue={activo.dia_pago} className={campo} />
+                      </Etiqueta>
+                      <Etiqueta texto="Depósito">
+                        <input name="deposito" inputMode="decimal" defaultValue={activo.deposito ?? ""} className={campo} />
+                      </Etiqueta>
+                      <Etiqueta texto="Recargo por atraso (%)">
+                        <input name="recargo_pct" inputMode="decimal" defaultValue={activo.recargo_pct ?? ""} placeholder="0" className={campo} />
+                      </Etiqueta>
+                      <Boton className="col-span-2 justify-self-start" estilo="claro" enviando="Guardando…">
+                        Guardar cambios
+                      </Boton>
+                    </form>
+                  </details>
+                  <details>
+                    <summary className="cursor-pointer font-semibold text-naranja-oscuro">Terminar contrato</summary>
+                    <form action={terminarContrato} className="mt-2 flex flex-col gap-2">
+                      <input type="hidden" name="id" value={activo.id} />
+                      <Etiqueta texto="Fecha de salida">
+                        <input type="date" name="salida" required defaultValue={hoy} className={campo} />
+                      </Etiqueta>
+                      <input name="motivo" placeholder="Motivo (opcional)" aria-label="Motivo" className={campo} />
+                      <p className="text-xs text-gris">La propiedad queda como vacía y se quitan las rentas pendientes después de la salida.</p>
+                      <Boton estilo="peligro" className="self-start" enviando="Terminando…">
+                        Terminar contrato
+                      </Boton>
+                    </form>
+                  </details>
+                </div>
+              ) : (
+                <details className="mt-2 border-t border-borde-suave pt-3" open={contratos.length === 0}>
+                  <summary className="cursor-pointer font-semibold text-verde">+ Nuevo contrato</summary>
+                  <form action={nuevoContrato} className="mt-2 grid grid-cols-2 gap-2">
+                    <input type="hidden" name="inquilino_id" value={id} />
+                    <div className="col-span-2">
+                      <Etiqueta texto="Propiedad">
+                        <select name="propiedad_id" required defaultValue="" className={campo}>
+                          <option value="" disabled>
+                            Elige…
+                          </option>
+                          {propiedades.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre}
+                              {p.estado === "vacia" ? " (vacía)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </Etiqueta>
+                    </div>
+                    <Etiqueta texto="Inicio">
+                      <input type="date" name="inicio" required defaultValue={hoy} className={campo} />
+                    </Etiqueta>
+                    <Etiqueta texto="Fin">
+                      <input type="date" name="fin" required defaultValue={unAnoDespues(hoy)} className={campo} />
+                    </Etiqueta>
+                    <Etiqueta texto="Renta">
+                      <input name="renta" inputMode="decimal" placeholder="$15,000" className={campo} />
+                    </Etiqueta>
+                    <Etiqueta texto="Día de pago">
+                      <input name="dia_pago" type="number" min={1} max={31} defaultValue={1} className={campo} />
+                    </Etiqueta>
+                    <Boton className="col-span-2 justify-self-start" enviando="Creando…">
+                      Crear contrato
+                    </Boton>
+                  </form>
+                </details>
               )}
             </section>
 
@@ -273,4 +383,11 @@ function Aviso({ titulo, texto, link, boton }: { titulo: string; texto: string; 
       </a>
     </div>
   );
+}
+
+// Misma fecha un año después (29 feb → 28 feb).
+function unAnoDespues(fecha: string) {
+  const [y, m, d] = fecha.split("-").map(Number);
+  const dd = m === 2 && d === 29 ? 28 : d;
+  return `${y + 1}-${String(m).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
 }

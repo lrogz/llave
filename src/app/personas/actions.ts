@@ -183,3 +183,105 @@ export async function crearReporte(f: FormData) {
     .upsert({ organizacion_id: org.id, dueno_id: d.id, periodo }, { onConflict: "dueno_id,periodo", ignoreDuplicates: true });
   revalidatePath(volverA(f));
 }
+
+// ─── Contratos ───────────────────────────────────────────────
+async function contratoDeLaOrg(supabase: Awaited<ReturnType<typeof sesionConOrg>>["supabase"], id: string) {
+  if (!esUuid(id)) throw new Error("Contrato no válido.");
+  const { data } = await supabase.from("contratos").select("id, inicio, fin, renta, inquilino_id, propiedad_id, activo").eq("id", id).maybeSingle();
+  if (!data) throw new Error("No encontramos el contrato.");
+  return data;
+}
+
+// Si cambia la renta, los cobros que aún no se pagan (de este mes en adelante) toman el nuevo monto.
+async function ajustarCobrosPendientes(supabase: Awaited<ReturnType<typeof sesionConOrg>>["supabase"], contratoId: string, renta: number) {
+  const mes = `${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date()).slice(0, 7)}-01`;
+  await supabase.from("cobros_renta").update({ monto: renta }).eq("contrato_id", contratoId).eq("estado", "pendiente").gte("periodo", mes);
+}
+
+export async function editarContrato(f: FormData) {
+  const { supabase } = await sesionConOrg();
+  const c = await contratoDeLaOrg(supabase, txt(f, "id", 40));
+  const fin = txt(f, "fin", 10);
+  const renta = monto(txt(f, "renta", 20));
+  const dia = Math.min(31, Math.max(1, Number(txt(f, "dia_pago", 2)) || 1));
+  const deposito = monto(txt(f, "deposito", 20));
+  const recargo = monto(txt(f, "recargo_pct", 6));
+  if (!esFecha(fin) || fin <= c.inicio) throw new Error("La fecha de fin debe ser después del inicio.");
+  if (renta == null) throw new Error("Pon la renta.");
+  await supabase
+    .from("contratos")
+    .update({ fin, renta, dia_pago: dia, deposito, recargo_pct: recargo != null && recargo <= 100 ? recargo : 0 })
+    .eq("id", c.id);
+  if (renta !== Number(c.renta)) await ajustarCobrosPendientes(supabase, c.id, renta);
+  revalidatePath(`/personas/inquilinos/${c.inquilino_id}`);
+}
+
+export async function renovarContrato(f: FormData) {
+  const { supabase, org, user } = await sesionConOrg();
+  const c = await contratoDeLaOrg(supabase, txt(f, "id", 40));
+  const fin = txt(f, "fin", 10);
+  const renta = monto(txt(f, "renta", 20)) ?? Number(c.renta);
+  if (!esFecha(fin) || fin <= c.fin) throw new Error("La nueva fecha de fin debe ser después de la actual.");
+  await supabase.from("contratos").update({ fin, renta, activo: true }).eq("id", c.id);
+  if (renta !== Number(c.renta)) await ajustarCobrosPendientes(supabase, c.id, renta);
+  const fmt = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
+  await supabase.from("notas").insert({
+    organizacion_id: org.id,
+    inquilino_id: c.inquilino_id,
+    autor_email: user.email ?? null,
+    texto: `Renovó contrato hasta ${fin}, renta ${fmt.format(renta)}${renta !== Number(c.renta) ? ` (antes ${fmt.format(Number(c.renta))})` : ""}.`,
+  });
+  revalidatePath(`/personas/inquilinos/${c.inquilino_id}`);
+  revalidatePath("/hoy");
+}
+
+export async function terminarContrato(f: FormData) {
+  const { supabase, org, user } = await sesionConOrg();
+  const c = await contratoDeLaOrg(supabase, txt(f, "id", 40));
+  const salida = txt(f, "salida", 10);
+  if (!esFecha(salida)) throw new Error("Pon la fecha de salida.");
+  const motivo = txt(f, "motivo", 300);
+  const nuevoFin = salida > c.inicio ? (salida < c.fin ? salida : c.fin) : c.fin;
+  await supabase.from("contratos").update({ activo: false, fin: nuevoFin }).eq("id", c.id);
+  // Cobros de meses posteriores a la salida que no se pagaron ya no aplican.
+  await supabase.from("cobros_renta").delete().eq("contrato_id", c.id).in("estado", ["pendiente"]).gt("periodo", salida);
+  const { count } = await supabase.from("contratos").select("id", { count: "exact", head: true }).eq("propiedad_id", c.propiedad_id).eq("activo", true);
+  if (!count) await supabase.from("propiedades").update({ estado: "vacia" }).eq("id", c.propiedad_id);
+  await supabase.from("notas").insert({
+    organizacion_id: org.id,
+    inquilino_id: c.inquilino_id,
+    autor_email: user.email ?? null,
+    texto: `Terminó el contrato. Salida: ${salida}.${motivo ? ` Motivo: ${motivo}` : ""}`,
+  });
+  revalidatePath(`/personas/inquilinos/${c.inquilino_id}`);
+  revalidatePath("/");
+  revalidatePath("/hoy");
+}
+
+export async function nuevoContrato(f: FormData) {
+  const { supabase, org } = await sesionConOrg();
+  const inquilinoId = txt(f, "inquilino_id", 40);
+  const propiedadId = txt(f, "propiedad_id", 40);
+  const inicio = txt(f, "inicio", 10);
+  const fin = txt(f, "fin", 10);
+  const renta = monto(txt(f, "renta", 20));
+  const dia = Math.min(31, Math.max(1, Number(txt(f, "dia_pago", 2)) || 1));
+  if (!esUuid(inquilinoId) || !esUuid(propiedadId) || !esFecha(inicio) || !esFecha(fin) || fin <= inicio) throw new Error("Revisa la propiedad y las fechas.");
+  const { data: inq } = await supabase.from("inquilinos").select("id").eq("id", inquilinoId).maybeSingle();
+  const { data: prop } = await supabase.from("propiedades").select("id, renta_mensual").eq("id", propiedadId).maybeSingle();
+  if (!inq || !prop) throw new Error("No encontramos al inquilino o la propiedad.");
+  await supabase.from("contratos").update({ activo: false }).eq("propiedad_id", prop.id).eq("activo", true);
+  const { error } = await supabase.from("contratos").insert({
+    organizacion_id: org.id,
+    propiedad_id: prop.id,
+    inquilino_id: inq.id,
+    inicio,
+    fin,
+    renta: renta ?? prop.renta_mensual ?? 0,
+    dia_pago: dia,
+  });
+  if (error) throw new Error("No pudimos crear el contrato.");
+  await supabase.from("propiedades").update({ estado: "rentada" }).eq("id", prop.id);
+  revalidatePath(`/personas/inquilinos/${inq.id}`);
+  revalidatePath("/");
+}

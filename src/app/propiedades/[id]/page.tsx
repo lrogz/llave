@@ -8,10 +8,20 @@ import { Logo } from "@/components/Logo";
 import { Cargando, Menu } from "@/components/Menu";
 import { sesion } from "@/lib/sesion";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, origen, pesos } from "@/lib/util";
-import { guardarDueno } from "../actions";
+import { borrarPropiedad, editarPropiedad, guardarDueno } from "../actions";
+import { campo, Etiqueta } from "@/components/Seguimiento";
 import { Imprimir } from "./Imprimir";
 import { SeccionDocumentos } from "@/components/Documentos";
 import { SeccionServicios } from "@/components/Servicios";
+
+const TIPOS_PROP = [
+  ["casa", "Casa"],
+  ["departamento", "Departamento"],
+  ["local", "Local"],
+  ["oficina", "Oficina"],
+  ["unidad_condominio", "Unidad en condominio"],
+  ["otro", "Otro"],
+] as const;
 
 export const metadata: Metadata = { title: "Propiedad · Black Key" };
 
@@ -24,6 +34,9 @@ type Propiedad = {
   renta_mensual: number | null;
   codigo_qr: string;
   duenos: { id: string; nombre: string; telefono: string | null } | null;
+  ciudad: string | null;
+  estado: string;
+  notas: string | null;
   contratos: { activo: boolean; fin: string; inquilinos: { id: string; nombre: string } | null }[];
   tickets: { id: string; folio: number; titulo: string; estado: string; created_at: string }[];
 };
@@ -44,12 +57,14 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
 
   const { data } = await supabase
     .from("propiedades")
-    .select("id, nombre, direccion, colonia, tipo, renta_mensual, codigo_qr, duenos(id, nombre, telefono), contratos(activo, fin, inquilinos(id, nombre)), tickets(id, folio, titulo, estado, created_at)")
+    .select("id, nombre, direccion, colonia, tipo, renta_mensual, codigo_qr, ciudad, estado, notas, duenos(id, nombre, telefono), contratos(activo, fin, inquilinos(id, nombre)), tickets(id, folio, titulo, estado, created_at)")
     .eq("id", id)
     .order("created_at", { referencedTable: "tickets", ascending: false })
     .maybeSingle();
   if (!data) notFound();
   const p = data as unknown as Propiedad;
+  const { data: listaDuenos } = await supabase.from("duenos").select("id, nombre").order("nombre");
+  const duenos = (listaDuenos ?? []) as { id: string; nombre: string }[];
 
   const linkReporte = `${await origen()}/r/${p.codigo_qr}`;
   const qr = await QRCode.toString(linkReporte, { type: "svg", margin: 1, color: { dark: "#14201C", light: "#FFFFFF" } });
@@ -133,6 +148,79 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                   Renta <span className="font-mono">{pesos.format(p.renta_mensual)}</span>
                 </p>
               )}
+            </section>
+
+            <section aria-label="Editar propiedad" className="rounded-2xl bg-white p-5">
+              <details>
+                <summary className="cursor-pointer font-bold">Editar datos de la propiedad</summary>
+                <form action={editarPropiedad} className="mt-3 grid grid-cols-2 gap-2">
+                  <input type="hidden" name="id" value={p.id} />
+                  <div className="col-span-2">
+                    <Etiqueta texto="Nombre">
+                      <input name="nombre" required defaultValue={p.nombre} className={campo} />
+                    </Etiqueta>
+                  </div>
+                  <div className="col-span-2">
+                    <Etiqueta texto="Calle y número">
+                      <input name="direccion" defaultValue={p.direccion ?? ""} className={campo} />
+                    </Etiqueta>
+                  </div>
+                  <Etiqueta texto="Colonia">
+                    <input name="colonia" defaultValue={p.colonia ?? ""} className={campo} />
+                  </Etiqueta>
+                  <Etiqueta texto="Ciudad">
+                    <input name="ciudad" defaultValue={p.ciudad ?? ""} className={campo} />
+                  </Etiqueta>
+                  <Etiqueta texto="Tipo">
+                    <select name="tipo" defaultValue={p.tipo} className={campo}>
+                      {TIPOS_PROP.map(([v, t]) => (
+                        <option key={v} value={v}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </Etiqueta>
+                  <Etiqueta texto="Estado">
+                    <select name="estado" defaultValue={p.estado} className={campo}>
+                      <option value="rentada">Rentada</option>
+                      <option value="vacia">Vacía</option>
+                      <option value="en_mantenimiento">En mantenimiento</option>
+                    </select>
+                  </Etiqueta>
+                  <Etiqueta texto="Renta mensual">
+                    <input name="renta" inputMode="decimal" defaultValue={p.renta_mensual ?? ""} className={campo} />
+                  </Etiqueta>
+                  <Etiqueta texto="Dueño">
+                    <select name="dueno_id" defaultValue={p.duenos?.id ?? ""} className={campo}>
+                      <option value="">Sin dueño</option>
+                      {duenos.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </Etiqueta>
+                  <div className="col-span-2">
+                    <Etiqueta texto="Notas">
+                      <textarea name="notas" rows={2} defaultValue={p.notas ?? ""} className={`${campo} py-2`} />
+                    </Etiqueta>
+                  </div>
+                  <Boton className="col-span-2 justify-self-start" enviando="Guardando…">
+                    Guardar cambios
+                  </Boton>
+                </form>
+                <details className="mt-5 border-t border-borde-suave pt-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-naranja-oscuro">Borrar propiedad</summary>
+                  <form action={borrarPropiedad} className="mt-2 flex flex-col gap-2">
+                    <input type="hidden" name="id" value={p.id} />
+                    <p className="text-sm text-gris">Se borran también sus tickets, contratos, cobros, servicios y documentos. No se puede deshacer.</p>
+                    <input name="confirmar" required pattern={p.nombre.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} title="Escribe el nombre exacto de la propiedad" placeholder={`Escribe: ${p.nombre}`} aria-label="Escribe el nombre para confirmar" className={campo} />
+                    <Boton estilo="peligro" enviando="Borrando…" className="self-start">
+                      Borrar para siempre
+                    </Boton>
+                  </form>
+                </details>
+              </details>
             </section>
 
             <section aria-label="Tickets de esta propiedad" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
