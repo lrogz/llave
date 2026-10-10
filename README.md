@@ -25,6 +25,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 | Ticket y comparación | `/tickets/[id]` | Administradora |
 | Pagos: rentas del mes | `/pagos` | Administradora |
 | Proveedores y su ficha | `/proveedores`, `/proveedores/[id]` | Administradora |
+| Documentos | `/documentos` | Administradora |
 | Pago de renta y comprobante | `/p/[token]` | Inquilino (sin cuenta) |
 | Reporte mensual del dueño | `/e/[token]` | Dueño (sin cuenta) |
 | Reportar un problema | `/r/[codigo]` | Inquilino (desde el QR) |
@@ -51,6 +52,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    3. `supabase/migrations/20261010060000_crm_seguimiento.sql`
    4. `supabase/migrations/20261010070000_reporte_dueno.sql`
    5. `supabase/migrations/20261010080000_cobro_rentas.sql`
+   6. `supabase/migrations/20261010090000_servicios_documentos.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App

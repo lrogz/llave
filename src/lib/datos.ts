@@ -137,3 +137,25 @@ export const TIPOS_PERMITIDOS = [
 
 export const MAX_ARCHIVO_REPORTE = 100 * 1024 * 1024; // 100 MB, igual que el bucket
 export const MAX_ARCHIVOS_REPORTE = 6;
+
+export const TIPOS_SERVICIO = [
+  ["luz", "Luz"],
+  ["agua", "Agua"],
+  ["gas", "Gas"],
+  ["internet", "Internet"],
+  ["predial", "Predial"],
+  ["cuota_condominio", "Cuota de condominio"],
+  ["otro", "Otro"],
+] as const;
+
+export const TIPOS_DOCUMENTO = [
+  ["contrato", "Contrato"],
+  ["identificacion", "Identificación"],
+  ["comprobante_domicilio", "Comprobante de domicilio"],
+  ["escrituras", "Escrituras"],
+  ["poliza", "Póliza / seguro"],
+  ["predial", "Predial"],
+  ["otro", "Otro"],
+] as const;
+
+export const MAX_ENVIO = 4 * 1024 * 1024; // límite por envío en Vercel; las fotos se reducen antes

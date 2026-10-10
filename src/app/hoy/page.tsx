@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { Cargando, Menu } from "@/components/Menu";
 import { ListaPendientes, NuevoPendiente, type Pendiente } from "@/components/Seguimiento";
 import { diasEntre, fechaConAnio, haceHoras, hoyMX, plantillas } from "@/lib/crm";
-import { formatoFecha, formatoFechaHora, linkWhatsApp, origen, pesos } from "@/lib/util";
+import { QUIEN_PAGA, TIPOS_SERVICIO, etiqueta, formatoFecha, formatoFechaHora, linkWhatsApp, origen, pesos } from "@/lib/util";
 import { sesionConOrg } from "@/lib/sesion";
 import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
 import { inicioDeMes, mesAnterior, mesTexto } from "@/lib/reporte";
@@ -51,7 +51,7 @@ async function Contenido() {
 
   const mesPasado = mesAnterior(inicioDeMes(hoy));
   await supabase.rpc("actualizar_cobros", { org: org.id }); // genera rentas del mes y marca atrasos
-  const [pend, contratos, aprob, parados, cobros, duenosQ, porRevisar] = await Promise.all([
+  const [pend, contratos, aprob, parados, cobros, duenosQ, porRevisar, recibosQ, docsQ] = await Promise.all([
     supabase
       .from("pendientes")
       .select("id, titulo, de_quien, vence, hecho_at, duenos(id, nombre), inquilinos(id, nombre), propiedades(id, nombre)")
@@ -88,7 +88,33 @@ async function Contenido() {
       .eq("reportes_dueno.periodo", mesPasado)
       .order("nombre"),
     supabase.from("cobros_renta").select("id", { count: "exact", head: true }).eq("estado", "por_confirmar"),
+    supabase
+      .from("recibos_servicio")
+      .select("id, vence, estado, servicios(tipo, quien_paga, propiedades(id, nombre))")
+      .in("estado", ["pendiente", "vencido"])
+      .lte("vence", hoyMX(3))
+      .order("vence"),
+    supabase
+      .from("documentos")
+      .select("id, nombre, vence, propiedades(id, nombre), duenos(id, nombre), inquilinos(id, nombre)")
+      .not("vence", "is", null)
+      .lte("vence", hoyMX(30))
+      .order("vence"),
   ]);
+  const recibos = (recibosQ.data ?? []) as unknown as {
+    id: string;
+    vence: string;
+    estado: string;
+    servicios: { tipo: string; quien_paga: string; propiedades: { id: string; nombre: string } | null } | null;
+  }[];
+  const docsVencen = (docsQ.data ?? []) as unknown as {
+    id: string;
+    nombre: string;
+    vence: string;
+    propiedades: { id: string; nombre: string } | null;
+    duenos: { id: string; nombre: string } | null;
+    inquilinos: { id: string; nombre: string } | null;
+  }[];
 
   const pendientes = (pend.data ?? []) as unknown as Pendiente[];
   const urgentes = pendientes.filter((p) => p.vence && p.vence <= hoy);
@@ -118,6 +144,8 @@ async function Contenido() {
     { n: ticketsParados.length, texto: "tickets parados +3 días", href: "#tickets" },
     { n: atrasados.length, texto: "rentas atrasadas", href: "#rentas" },
     { n: porRevisar.count ?? 0, texto: "comprobantes de pago por revisar", href: "/pagos" },
+    { n: recibos.length, texto: "servicios vencidos o por vencer", href: "#servicios" },
+    { n: docsVencen.length, texto: "documentos que vencen en 30 días", href: "#documentos" },
     { n: reportes.filter(({ r }) => !r).length, texto: "reportes a dueños por preparar", href: "#reportes" },
   ];
   const nada = tarjetas.every((t) => t.n === 0);
@@ -213,6 +241,39 @@ async function Contenido() {
                   urgente={diasEntre(t.updated_at.slice(0, 10), hoy) > 7}
                 />
               ))}
+            </Bloque>
+
+            <Bloque id="servicios" titulo="Servicios (luz, agua, predial…)" vacio="Ningún servicio vencido ni por vencer.">
+              {recibos.map((r) => (
+                <Fila
+                  key={r.id}
+                  href="/pagos#servicios"
+                  titulo={`${etiqueta(TIPOS_SERVICIO, r.servicios?.tipo)} · ${r.servicios?.propiedades?.nombre ?? ""}`}
+                  detalle={`${r.estado === "vencido" ? "Venció" : "Vence"} ${formatoFecha(r.vence)} · paga ${etiqueta(QUIEN_PAGA, r.servicios?.quien_paga).toLowerCase()}`}
+                  urgente={r.estado === "vencido"}
+                />
+              ))}
+            </Bloque>
+
+            <Bloque id="documentos" titulo="Documentos por vencer" vacio="Ningún documento vence en los próximos 30 días.">
+              {docsVencen.map((d) => {
+                const de = d.propiedades
+                  ? { href: `/propiedades/${d.propiedades.id}`, nombre: d.propiedades.nombre }
+                  : d.inquilinos
+                    ? { href: `/personas/inquilinos/${d.inquilinos.id}`, nombre: d.inquilinos.nombre }
+                    : d.duenos
+                      ? { href: `/personas/duenos/${d.duenos.id}`, nombre: d.duenos.nombre }
+                      : null;
+                return (
+                  <Fila
+                    key={d.id}
+                    href={de?.href}
+                    titulo={`${d.nombre}${de ? ` · ${de.nombre}` : ""}`}
+                    detalle={d.vence < hoy ? `Venció el ${fechaConAnio(d.vence)}` : `Vence el ${fechaConAnio(d.vence)}`}
+                    urgente={d.vence <= hoyMX(7)}
+                  />
+                );
+              })}
             </Bloque>
 
             <Bloque id="rentas" titulo="Rentas atrasadas" vacio="Todas las rentas al corriente.">

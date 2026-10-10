@@ -5,7 +5,9 @@ import { Boton } from "@/components/Boton";
 import { Cargando, Menu } from "@/components/Menu";
 import { campo } from "@/components/Seguimiento";
 import { hoyMX, plantillas } from "@/lib/crm";
-import { BUCKET, formatoFecha, linkWhatsApp, origen, pesos } from "@/lib/util";
+import { BUCKET, QUIEN_PAGA, TIPOS_SERVICIO, etiqueta, formatoFecha, linkWhatsApp, origen, pesos } from "@/lib/util";
+import { InputComprimido } from "@/components/InputComprimido";
+import { deshacerRecibo, pagarRecibo } from "../servicios/actions";
 import { inicioDeMes, mesAnterior, mesTexto, siguienteMes } from "@/lib/reporte";
 import { sesionConOrg } from "@/lib/sesion";
 import { condonar, deshacerPago, guardarDatosPago, registrarPago, rechazarComprobante } from "./actions";
@@ -36,6 +38,23 @@ const ESTADO: Record<Cobro["estado"], { texto: string; clase: string; orden: num
   pagado: { texto: "Pagada", clase: "bg-verde-claro text-verde-oscuro", orden: 3 },
   condonado: { texto: "Condonada", clase: "bg-fondo text-gris", orden: 4 },
 };
+type Recibo = {
+  id: string;
+  monto: number | null;
+  vence: string;
+  estado: Cobro["estado"];
+  pagado_at: string | null;
+  comprobante_path: string | null;
+  servicios: {
+    tipo: string;
+    compania: string | null;
+    numero_servicio: string | null;
+    quien_paga: string;
+    propiedades: { id: string; nombre: string } | null;
+  } | null;
+};
+const ORDEN_RECIBO: Record<Cobro["estado"], number> = { vencido: 0, pendiente: 1, por_confirmar: 1, pagado: 2, condonado: 3 };
+
 const METODOS = [
   ["spei", "SPEI / transferencia"],
   ["efectivo", "Efectivo"],
@@ -61,7 +80,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
   // Genera los cobros del mes y marca atrasos (no duplica si ya existen).
   await supabase.rpc("actualizar_cobros", { org: org.id });
 
-  const [{ data }, { data: o }, { count: contratosActivos }] = await Promise.all([
+  const [{ data }, { data: o }, { count: contratosActivos }, { data: rs }] = await Promise.all([
     supabase
       .from("cobros_renta")
       .select("id, monto, recargo, vence, estado, metodo, pagado_at, comprobante_path, token, nota, contratos(propiedades(id, nombre), inquilinos(id, nombre, telefono))")
@@ -69,10 +88,16 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
       .order("vence"),
     supabase.from("organizaciones").select("datos_pago").eq("id", org.id).maybeSingle(),
     supabase.from("contratos").select("id", { count: "exact", head: true }).eq("activo", true),
+    supabase
+      .from("recibos_servicio")
+      .select("id, monto, vence, estado, pagado_at, comprobante_path, servicios(tipo, compania, numero_servicio, quien_paga, propiedades(id, nombre))")
+      .eq("periodo", periodo)
+      .order("vence"),
   ]);
+  const recibos = ((rs ?? []) as unknown as Recibo[]).sort((a, b) => ORDEN_RECIBO[a.estado] - ORDEN_RECIBO[b.estado] || a.vence.localeCompare(b.vence));
   const cobros = ((data ?? []) as unknown as Cobro[]).sort((a, b) => ESTADO[a.estado].orden - ESTADO[b.estado].orden || a.vence.localeCompare(b.vence));
 
-  const rutas = cobros.filter((c) => c.comprobante_path).map((c) => c.comprobante_path!);
+  const rutas = [...cobros, ...recibos].filter((c) => c.comprobante_path).map((c) => c.comprobante_path!);
   const { data: firmadas } = rutas.length ? await supabase.storage.from(BUCKET).createSignedUrls(rutas, 3600) : { data: [] };
   const url = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]));
   const base = await origen();
@@ -113,6 +138,12 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
           <Cifra titulo="Cobrado" valor={pesos.format(cobrado)} nota={esperado ? `${Math.round((cobrado / esperado) * 100)}%` : undefined} verde />
           <Cifra titulo="Comprobantes por revisar" valor={String(cobros.filter((c) => c.estado === "por_confirmar").length)} />
           <Cifra titulo="Atrasado" valor={pesos.format(suma(["vencido"]))} alerta={suma(["vencido"]) > 0} />
+          <Cifra
+            titulo="Servicios vencidos"
+            valor={String(recibos.filter((r) => r.estado === "vencido").length)}
+            nota={`${recibos.filter((r) => r.estado === "pagado").length} de ${recibos.length} pagados`}
+            alerta={recibos.some((r) => r.estado === "vencido")}
+          />
         </ul>
 
         <div className="flex flex-wrap items-start gap-5">
@@ -267,6 +298,68 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
             </form>
           </section>
         </div>
+
+        <section id="servicios" aria-label="Servicios del mes" className="overflow-hidden rounded-2xl bg-white">
+          <h2 className="px-5 pt-5 font-bold">Servicios del mes</h2>
+          {recibos.length === 0 ? (
+            <p className="p-5 text-sm text-gris">Sin recibos este mes. Da de alta luz, agua, predial o cuota en la ficha de cada propiedad.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-borde-suave">
+              {recibos.map((r) => {
+                const s = r.servicios;
+                return (
+                  <li key={r.id} className="flex flex-col gap-2 px-5 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 text-sm">
+                        <p className="font-bold">
+                          {etiqueta(TIPOS_SERVICIO, s?.tipo)} · {s?.propiedades?.nombre}
+                        </p>
+                        <p className="text-gris">
+                          Paga: {etiqueta(QUIEN_PAGA, s?.quien_paga)}
+                          {s?.compania ? ` · ${s.compania}` : ""}
+                          {s?.numero_servicio ? ` · No. ${s.numero_servicio}` : ""}
+                          {" · "}
+                          {r.pagado_at ? `pagado ${formatoFecha(r.pagado_at)}` : `vence ${formatoFecha(r.vence)}`}
+                        </p>
+                      </div>
+                      <span className="flex flex-none items-center gap-2">
+                        {r.monto != null && <span className="font-mono">{pesos.format(r.monto)}</span>}
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${ESTADO[r.estado].clase}`}>{r.estado === "pagado" ? "Pagado" : ESTADO[r.estado].texto}</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {r.comprobante_path && url.get(r.comprobante_path) && (
+                        <a href={url.get(r.comprobante_path)!} target="_blank" rel="noreferrer" className="text-xs font-semibold text-verde underline">
+                          Ver comprobante
+                        </a>
+                      )}
+                      {r.estado === "pagado" ? (
+                        <form action={deshacerRecibo}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <button type="submit" className="text-xs font-semibold text-gris underline">
+                            Deshacer
+                          </button>
+                        </form>
+                      ) : (
+                        <details>
+                          <summary className="flex min-h-10 cursor-pointer list-none items-center rounded-xl bg-verde px-3 text-xs font-bold text-white">Marcar pagado</summary>
+                          <form action={pagarRecibo} className="mt-2 flex flex-wrap items-end gap-2">
+                            <input type="hidden" name="id" value={r.id} />
+                            <input name="monto" inputMode="decimal" placeholder="Monto" aria-label="Monto del recibo" className={campo} />
+                            <InputComprimido name="comprobante" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic" className="text-xs" />
+                            <Boton enviando="Guardando…" className="min-h-11 text-xs">
+                              Guardar
+                            </Boton>
+                          </form>
+                        </details>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </main>
     </div>
   );

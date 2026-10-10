@@ -10,10 +10,10 @@ const ITEMS = [
   { texto: "Bandeja", href: null },
   { texto: "Proveedores", href: "/proveedores" },
   { texto: "Pagos", href: "/pagos" },
-  { texto: "Documentos", href: null },
+  { texto: "Documentos", href: "/documentos" },
 ] as const;
 
-export function Menu({ activo, nombreOrg }: { activo: "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Proveedores"; nombreOrg: string }) {
+export function Menu({ activo, nombreOrg }: { activo: "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Proveedores" | "Documentos"; nombreOrg: string }) {
   return (
     <nav
       aria-label="Secciones"

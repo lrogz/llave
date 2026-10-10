@@ -8,6 +8,7 @@ import { campo, Etiqueta, LineaTiempo, ListaPendientes, NuevaNota, NuevoPendient
 import { diasEntre, fechaConAnio, hoyMX, mediodia, plantillas } from "@/lib/crm";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { SeccionDocumentos } from "@/components/Documentos";
 import { origen } from "@/lib/util";
 import { guardarDatosInquilino } from "../../actions";
 
@@ -226,6 +227,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                 </ul>
               </section>
             )}
+
+            <SeccionDocumentos db={supabase} ctx={{ inquilino_id: id }} volver={volver} tipoSugerido="contrato" />
 
             <section aria-label="Datos del inquilino" className="rounded-2xl bg-white p-5">
               <h2 className="font-bold">Datos y aval</h2>

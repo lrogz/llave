@@ -8,6 +8,7 @@ import { campo, Etiqueta, LineaTiempo, ListaPendientes, NuevaNota, NuevoPendient
 import { CANALES, FRECUENCIAS, plantillas } from "@/lib/crm";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, linkWhatsApp, pesos } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { SeccionDocumentos } from "@/components/Documentos";
 import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
 import { inicioDeMes, mesAnterior } from "@/lib/reporte";
 import { origen } from "@/lib/util";
@@ -224,6 +225,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                 ))}
               </ul>
             </section>
+
+            <SeccionDocumentos db={supabase} ctx={{ dueno_id: id }} volver={volver} tipoSugerido="identificacion" />
 
             <section aria-label="Datos del dueño" className="rounded-2xl bg-white p-5">
               <h2 className="font-bold">Datos y preferencias</h2>

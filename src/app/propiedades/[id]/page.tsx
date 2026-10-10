@@ -10,6 +10,8 @@ import { sesion } from "@/lib/sesion";
 import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, origen, pesos } from "@/lib/util";
 import { guardarDueno } from "../actions";
 import { Imprimir } from "./Imprimir";
+import { SeccionDocumentos } from "@/components/Documentos";
+import { SeccionServicios } from "@/components/Servicios";
 
 export const metadata: Metadata = { title: "Propiedad · Black Key" };
 
@@ -155,6 +157,9 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                 </ul>
               )}
             </section>
+
+            <SeccionServicios db={supabase} propiedadId={p.id} />
+            <SeccionDocumentos db={supabase} ctx={{ propiedad_id: p.id }} volver={`/propiedades/${p.id}`} tipoSugerido="escrituras" />
           </div>
         </div>
       </main>
