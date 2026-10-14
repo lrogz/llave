@@ -10,6 +10,8 @@ import { InputComprimido } from "@/components/InputComprimido";
 import { deshacerRecibo, pagarRecibo } from "../servicios/actions";
 import { inicioDeMes, mesAnterior, mesTexto, siguienteMes } from "@/lib/reporte";
 import { sesionConOrg } from "@/lib/sesion";
+import { BotonFacturar, BotonFacturarMes } from "@/components/Fiscal";
+import { cancelarFactura } from "../facturacion/actions";
 import { condonar, deshacerPago, guardarDatosPago, registrarPago, rechazarComprobante } from "./actions";
 
 export const metadata: Metadata = { title: "Pagos · Black Key" };
@@ -97,6 +99,10 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
   const recibos = ((rs ?? []) as unknown as Recibo[]).sort((a, b) => ORDEN_RECIBO[a.estado] - ORDEN_RECIBO[b.estado] || a.vence.localeCompare(b.vence));
   const cobros = ((data ?? []) as unknown as Cobro[]).sort((a, b) => ESTADO[a.estado].orden - ESTADO[b.estado].orden || a.vence.localeCompare(b.vence));
 
+  // Facturas de los cobros del mes (si la base ya tiene facturación).
+  const { data: fs, error: errFac } = cobros.length ? await supabase.from("facturas").select("id, cobro_id, uuid, folio").eq("estado", "valida").in("cobro_id", cobros.map((c) => c.id)) : { data: [], error: null };
+  const conFacturas = !errFac;
+  const facturaDe = new Map(((fs ?? []) as { id: string; cobro_id: string; uuid: string | null; folio: string | null }[]).map((x) => [x.cobro_id, x]));
   const rutas = [...cobros, ...recibos].filter((c) => c.comprobante_path).map((c) => c.comprobante_path!);
   const { data: firmadas } = rutas.length ? await supabase.storage.from(BUCKET).createSignedUrls(rutas, 3600) : { data: [] };
   const url = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]));
@@ -130,6 +136,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
                 Siguiente ›
               </Link>
             )}
+            {conFacturas && <BotonFacturarMes periodo={periodo} />}
             <Link href="/pagos/conciliar" className="flex min-h-11 items-center rounded-xl bg-tinta px-4 text-sm font-bold text-white">
               Conciliar con el banco
             </Link>
@@ -267,6 +274,29 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
                         </div>
                       )}
 
+                      {conFacturas && c.estado === "pagado" && (
+                        <div className="flex flex-wrap items-center gap-3 text-xs">
+                          {facturaDe.get(c.id) ? (
+                            <>
+                              <span className="font-semibold text-verde-oscuro">✓ Facturada {facturaDe.get(c.id)!.folio ?? ""}</span>
+                              <a href={`/facturas/${facturaDe.get(c.id)!.id}/pdf`} target="_blank" rel="noreferrer" className="font-semibold text-verde underline">
+                                PDF
+                              </a>
+                              <a href={`/facturas/${facturaDe.get(c.id)!.id}/xml`} target="_blank" rel="noreferrer" className="font-semibold text-verde underline">
+                                XML
+                              </a>
+                              <form action={cancelarFactura}>
+                                <input type="hidden" name="factura_id" value={facturaDe.get(c.id)!.id} />
+                                <button type="submit" className="text-gris underline">
+                                  Cancelar factura
+                                </button>
+                              </form>
+                            </>
+                          ) : (
+                            <BotonFacturar cobroId={c.id} />
+                          )}
+                        </div>
+                      )}
                       {(c.estado === "pagado" || c.estado === "condonado") && (
                         <form action={deshacerPago}>
                           <input type="hidden" name="id" value={c.id} />

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { sesionConOrg } from "@/lib/sesion";
+import { facturarSiAutomatico } from "@/lib/facturacion";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const METODOS = ["spei", "transferencia_externa", "efectivo", "tarjeta", "oxxo"];
 const txt = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
@@ -30,6 +32,8 @@ export async function registrarPago(f: FormData) {
     .from("cobros_renta")
     .update({ estado: "pagado", metodo: METODOS.includes(metodo) ? metodo : "transferencia_externa", pagado_at: pagadoAt, nota: txt(f, "nota", 300) || null })
     .eq("id", cobro.id);
+  const { org } = await sesionConOrg();
+  await facturarSiAutomatico(createAdminClient(), cobro.id, org.id);
   refrescar();
 }
 

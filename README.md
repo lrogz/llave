@@ -64,6 +64,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    12. `supabase/migrations/20261014110000_anuncios.sql`
    13. `supabase/migrations/20261014120000_entregas_mantenimiento.sql`
    14. `supabase/migrations/20261014130000_cobro_contratos_solicitudes.sql`
+   15. `supabase/migrations/20261014140000_facturacion.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -157,6 +158,19 @@ Un número de WhatsApp Business para Black Key: manda los avisos (renta, vencida
 9. Prueba: escribe al número desde el celular de un inquilino registrado (con contrato activo) → se crea el ticket y le responde con su link. En Ajustes › Avisos automáticos debe decir "WhatsApp conectado ✓".
 
 Costos: Meta cobra los mensajes de plantilla (avisos); las respuestas del bot dentro de las 24 h después de que el inquilino escribe no llevan plantilla. Revisa la tarifa vigente para México en Meta.
+
+### 8. Facturación CFDI de rentas con Facturapi (opcional)
+
+Cada **dueño** factura su renta con su propio sello digital (CSD); Black Key crea un emisor por dueño en Facturapi y timbra por él.
+
+1. Crea tu cuenta en [facturapi.io](https://www.facturapi.io) y copia tu **llave secreta de usuario** (`sk_user_…`, en Cuenta › API Keys).
+2. En Vercel agrega `FACTURAPI_KEY` = esa llave. Para probar sin timbrar de verdad agrega también `FACTURAPI_MODO=test`. Redeploy.
+3. En la ficha del dueño › "Facturación de sus rentas": RFC, razón social (como en su constancia), régimen (normalmente 606 Arrendamiento) y C.P. fiscal, más su **CSD** (.cer, .key y contraseña; no es la e.firma). La contraseña no se guarda.
+4. En la ficha del inquilino › "Datos fiscales" (si pide factura): RFC, razón social, régimen, C.P. y uso. Sin datos se factura a público en general. "Facturar solo" timbra al registrar cada pago.
+5. En Pagos: "Facturar" por renta pagada o "Facturar rentas pagadas del mes"; PDF/XML y cancelar.
+6. En la propiedad, la **cuenta predial** (va en la factura).
+
+Reglas que aplica (valídalas con tu contador): clave 80131500 / unidad E48; casa habitación sin amueblar = IVA exento; local, oficina o amueblada = IVA 16%; si paga una persona moral, retención de ISR 10% (1.25% si el dueño está en RESICO) y 2/3 del IVA. Facturapi cobra por factura timbrada según su plan.
 
 ## Seguridad
 

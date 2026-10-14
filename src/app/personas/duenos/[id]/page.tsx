@@ -14,6 +14,7 @@ import { inicioDeMes, mesAnterior } from "@/lib/reporte";
 import { origen } from "@/lib/util";
 import { hoyMX } from "@/lib/crm";
 import { asignarPropiedad, guardarDatosDueno } from "../../actions";
+import { SeccionFiscalDueno } from "@/components/SeccionesFiscales";
 
 export const metadata: Metadata = { title: "Dueño · Black Key" };
 
@@ -229,6 +230,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
             </section>
 
             <SeccionDocumentos db={supabase} ctx={{ dueno_id: id }} volver={volver} tipoSugerido="identificacion" />
+
+            <SeccionFiscalDueno db={supabase} duenoId={id} />
 
             <section aria-label="Datos del dueño" className="rounded-2xl bg-white p-5">
               <h2 className="font-bold">Datos y preferencias</h2>

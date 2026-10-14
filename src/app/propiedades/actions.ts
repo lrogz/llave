@@ -61,6 +61,8 @@ export async function editarPropiedad(form: FormData) {
     })
     .eq("id", id);
   if (error) throw new Error("No pudimos guardar los cambios.");
+  // Aparte: si la base aún no tiene la columna, no impide guardar lo demás.
+  await supabase.from("propiedades").update({ cuenta_predial: txt(form, "cuenta_predial", 40) || null }).eq("id", id);
   revalidatePath(`/propiedades/${id}`);
   revalidatePath("/");
 }

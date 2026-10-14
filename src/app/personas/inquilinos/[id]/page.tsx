@@ -12,6 +12,7 @@ import { SeccionDocumentos } from "@/components/Documentos";
 import { origen } from "@/lib/util";
 import { editarContrato, guardarDatosInquilino, nuevoContrato, renovarContrato, terminarContrato } from "../../actions";
 import { guardarPoliza, prepararContrato } from "@/app/contratos/actions";
+import { SeccionFiscalInquilino } from "@/components/SeccionesFiscales";
 
 export const metadata: Metadata = { title: "Inquilino · Black Key" };
 
@@ -341,6 +342,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
             )}
 
             <SeccionDocumentos db={supabase} ctx={{ inquilino_id: id }} volver={volver} tipoSugerido="contrato" />
+
+            <SeccionFiscalInquilino db={supabase} inquilinoId={id} />
 
             <section aria-label="Datos del inquilino" className="rounded-2xl bg-white p-5">
               <h2 className="font-bold">Datos y aval</h2>

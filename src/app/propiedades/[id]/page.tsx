@@ -219,6 +219,11 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                     </select>
                   </Etiqueta>
                   <div className="col-span-2">
+                    <Etiqueta texto="Cuenta predial (para la factura)">
+                      <CuentaPredial db={supabase} id={p.id} />
+                    </Etiqueta>
+                  </div>
+                  <div className="col-span-2">
                     <Etiqueta texto="Notas">
                       <textarea name="notas" rows={2} defaultValue={p.notas ?? ""} className={`${campo} py-2`} />
                     </Etiqueta>
@@ -334,4 +339,9 @@ async function SeccionMantenimiento({ db, propiedadId }: { db: Db; propiedadId: 
       </details>
     </section>
   );
+}
+
+async function CuentaPredial({ db, id }: { db: Db; id: string }) {
+  const { data } = await db.from("propiedades").select("cuenta_predial").eq("id", id).maybeSingle();
+  return <input name="cuenta_predial" maxLength={40} defaultValue={(data as { cuenta_predial?: string | null } | null)?.cuenta_predial ?? ""} className={campo} />;
 }

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import type { Deposito } from "@/lib/conciliacion";
 import { sesionConOrg } from "@/lib/sesion";
+import { facturarSiAutomatico } from "@/lib/facturacion";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type Coincidencia = {
   deposito: Deposito;
@@ -83,7 +85,8 @@ export async function analizarDepositos(entrada: Deposito[]): Promise<{ resultad
 }
 
 export async function registrarConciliacion(items: { cobro_id: string; fecha: string | null }[]): Promise<{ registrados: number }> {
-  const { supabase } = await sesionConOrg();
+  const { supabase, org } = await sesionConOrg();
+  const admin = createAdminClient();
   let registrados = 0;
   for (const it of (items ?? []).slice(0, 2000)) {
     if (!/^[0-9a-f-]{36}$/i.test(String(it.cobro_id))) continue;
@@ -95,6 +98,7 @@ export async function registrarConciliacion(items: { cobro_id: string; fecha: st
       .in("estado", ["pendiente", "vencido", "por_confirmar"])
       .select("id");
     registrados += data?.length ?? 0;
+    if (data?.length) await facturarSiAutomatico(admin, it.cobro_id, org.id);
   }
   revalidatePath("/pagos");
   revalidatePath("/hoy");

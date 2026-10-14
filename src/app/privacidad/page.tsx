@@ -61,6 +61,7 @@ export default function Privacidad() {
             "Resend (envío de correos).",
             "Meta / WhatsApp Business (envío y recepción de mensajes de WhatsApp).",
             "Stripe (procesamiento de pagos de la suscripción).",
+            "Facturapi (timbrado de facturas CFDI ante el SAT, cuando la administradora lo activa).",
           ]}
         />
         <p>
