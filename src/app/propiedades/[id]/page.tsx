@@ -11,6 +11,8 @@ import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, origen, pesos } f
 import { borrarPropiedad, editarPropiedad, guardarDueno } from "../actions";
 import { campo, Etiqueta } from "@/components/Seguimiento";
 import { Imprimir } from "./Imprimir";
+import { CambiarPortada } from "./CambiarPortada";
+import { Portada, urlsPortada } from "@/components/Portada";
 import { SeccionDocumentos } from "@/components/Documentos";
 import { SeccionServicios } from "@/components/Servicios";
 
@@ -31,6 +33,7 @@ type Propiedad = {
   direccion: string | null;
   colonia: string | null;
   tipo: string;
+  foto_path: string | null;
   renta_mensual: number | null;
   codigo_qr: string;
   duenos: { id: string; nombre: string; telefono: string | null } | null;
@@ -57,7 +60,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
 
   const { data } = await supabase
     .from("propiedades")
-    .select("id, nombre, direccion, colonia, tipo, renta_mensual, codigo_qr, ciudad, estado, notas, duenos(id, nombre, telefono), contratos(activo, fin, inquilinos(id, nombre)), tickets(id, folio, titulo, estado, created_at)")
+    .select("id, nombre, direccion, colonia, tipo, renta_mensual, foto_path, codigo_qr, ciudad, estado, notas, duenos(id, nombre, telefono), contratos(activo, fin, inquilinos(id, nombre)), tickets(id, folio, titulo, estado, created_at)")
     .eq("id", id)
     .order("created_at", { referencedTable: "tickets", ascending: false })
     .maybeSingle();
@@ -66,6 +69,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const { data: listaDuenos } = await supabase.from("duenos").select("id, nombre").order("nombre");
   const duenos = (listaDuenos ?? []) as { id: string; nombre: string }[];
 
+  const foto = p.foto_path ? ((await urlsPortada(supabase, [p.foto_path])).get(p.foto_path) ?? null) : null;
   const linkReporte = `${await origen()}/r/${p.codigo_qr}`;
   const qr = await QRCode.toString(linkReporte, { type: "svg", margin: 1, color: { dark: "#14201C", light: "#FFFFFF" } });
 
@@ -78,6 +82,10 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
         <Link href="/" className="text-sm font-semibold text-verde print:hidden">
           ‹ Propiedades
         </Link>
+        <Portada tipo={p.tipo} semilla={p.id} url={foto} className="h-40 rounded-2xl sm:h-52 print:hidden">
+          <span />
+          <CambiarPortada id={p.id} tieneFoto={!!foto} />
+        </Portada>
         <header className="print:hidden">
           <p className="text-sm text-gris capitalize">{p.tipo.replace("_", " ")}</p>
           <h1 className="font-display text-4xl font-bold tracking-tight">{p.nombre}</h1>

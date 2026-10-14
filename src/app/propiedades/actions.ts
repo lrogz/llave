@@ -1,10 +1,12 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sesionConOrg } from "@/lib/sesion";
 import { sincronizarCantidad } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
 
 export async function guardarDueno(form: FormData) {
   const { supabase, org } = await sesionConOrg();
@@ -73,4 +75,39 @@ export async function borrarPropiedad(form: FormData) {
   await sincronizarCantidad(createAdminClient(), org.id).catch(() => {});
   revalidatePath("/");
   redirect("/");
+}
+
+const FOTOS = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+
+// Foto de portada de la propiedad (se ve en la tarjeta de Mis propiedades y en su ficha).
+export async function subirPortada(form: FormData) {
+  const { supabase, org } = await sesionConOrg();
+  const id = txt(form, "id", 40);
+  const foto = form.get("foto");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return;
+  if (!(foto instanceof File) || foto.size === 0) throw new Error("Elige una foto.");
+  if (!FOTOS.includes(foto.type)) throw new Error("Sube una foto (JPG, PNG o WebP).");
+  if (foto.size > MAX_ENVIO) throw new Error("La foto pesa más de 4 MB.");
+  const { data: p } = await supabase.from("propiedades").select("id, foto_path").eq("id", id).maybeSingle();
+  if (!p) throw new Error("No encontramos la propiedad.");
+
+  const path = `${org.id}/propiedades/${p.id}/portada-${randomUUID().slice(0, 8)}.${extension(foto.name, foto.type)}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, foto, { contentType: foto.type });
+  if (error) throw new Error("No pudimos subir la foto.");
+  await supabase.from("propiedades").update({ foto_path: path }).eq("id", p.id);
+  if (p.foto_path) await supabase.storage.from(BUCKET).remove([p.foto_path]);
+  revalidatePath(`/propiedades/${p.id}`);
+  revalidatePath("/");
+}
+
+export async function quitarPortada(form: FormData) {
+  const { supabase } = await sesionConOrg();
+  const id = txt(form, "id", 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return;
+  const { data: p } = await supabase.from("propiedades").select("id, foto_path").eq("id", id).maybeSingle();
+  if (!p?.foto_path) return;
+  await supabase.from("propiedades").update({ foto_path: null }).eq("id", p.id);
+  await supabase.storage.from(BUCKET).remove([p.foto_path]);
+  revalidatePath(`/propiedades/${p.id}`);
+  revalidatePath("/");
 }

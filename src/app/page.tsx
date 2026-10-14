@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { Cargando, Menu } from "@/components/Menu";
 import { Boton } from "@/components/Boton";
+import { Portada, urlsPortada } from "@/components/Portada";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseConfigurado } from "@/lib/supabase/config";
 import { pesos } from "@/lib/datos";
@@ -13,6 +14,7 @@ type Propiedad = {
   nombre: string;
   direccion: string | null;
   tipo: string;
+  foto_path: string | null;
   estado: "rentada" | "vacia" | "en_mantenimiento";
   renta_mensual: number | null;
   tickets: { estado: string }[];
@@ -61,10 +63,11 @@ async function Contenido() {
 
   const { data } = await supabase
     .from("propiedades")
-    .select("id, nombre, direccion, tipo, estado, renta_mensual, tickets(estado)")
+    .select("id, nombre, direccion, tipo, estado, renta_mensual, foto_path, tickets(estado)")
     .order("created_at", { ascending: false });
 
   const propiedades = (data ?? []) as Propiedad[];
+  const fotos = await urlsPortada(supabase, propiedades.map((p) => p.foto_path));
   const abiertos = (p: Propiedad) =>
     p.tickets.filter((t) => t.estado !== "resuelto" && t.estado !== "cancelado").length;
 
@@ -104,7 +107,7 @@ async function Contenido() {
             const estado = ESTADOS[p.estado];
             return (
               <Link key={p.id} href={`/propiedades/${p.id}`} className="flex flex-col overflow-hidden rounded-2xl bg-white hover:ring-2 hover:ring-verde/30">
-                <div className="flex h-24 items-end justify-between bg-[#D8E3DE] px-3 py-2.5">
+                <Portada tipo={p.tipo} semilla={p.id} url={p.foto_path ? fotos.get(p.foto_path) : null} className="h-32">
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold capitalize">
                     {p.tipo.replace("_", " ")}
                   </span>
@@ -113,7 +116,7 @@ async function Contenido() {
                       {n} {n === 1 ? "ticket" : "tickets"}
                     </span>
                   )}
-                </div>
+                </Portada>
                 <div className="flex flex-col gap-2.5 p-4">
                   <div>
                     <h2 className="font-bold">{p.nombre}</h2>
