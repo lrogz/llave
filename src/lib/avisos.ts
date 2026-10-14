@@ -4,6 +4,7 @@ import { diasEntre, hoyMX, primerNombre } from "./crm";
 import { correoConfigurado, enviarCorreos, plantilla, type Correo } from "./correo";
 import { TIPOS_SERVICIO, etiqueta, formatoFecha, pesos } from "./datos";
 import { inicioDeMes, mesAnterior, mesTexto } from "./reporte";
+import { generarMantenimientos } from "./mantenimiento";
 import { enviarPlantilla, telefonoValido, whatsappConfigurado, type MensajeWA } from "./whatsapp";
 
 export type TipoAviso = "renta" | "vencida" | "reporte" | "renovacion" | "servicios" | "resumen";
@@ -45,6 +46,7 @@ export async function correrAvisos(db: SupabaseClient, opciones: { soloOrg?: str
 
 async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<ResultadoOrg> {
   await db.rpc("generar_cobros", { org: org.id });
+  const mantenimientos = await generarMantenimientos(db, org.id);
   const activo = (t: TipoAviso) => org.avisos?.[t] !== false;
   const hoy = hoyMX();
   const responsables = valido(org.avisos?.correo)
@@ -214,6 +216,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     ]
       .filter(([n]) => (n as number) > 0)
       .map(([n, t]) => `• ${n} ${t}`);
+    if (mantenimientos) lineas.push(`• Creamos ${mantenimientos} ${mantenimientos === 1 ? "ticket" : "tickets"} de mantenimiento preventivo para esta semana.`);
     if (nuevos.length) lineas.push(`• Hoy mandamos ${nuevos.length} ${nuevos.length === 1 ? "aviso" : "avisos"} por ti a inquilinos y dueños.`);
     if (lineas.length) {
       for (const email of responsables) {

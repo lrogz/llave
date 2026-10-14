@@ -62,6 +62,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    10. `supabase/migrations/20261014090000_liquidaciones.sql`
    11. `supabase/migrations/20261014100000_whatsapp.sql`
    12. `supabase/migrations/20261014110000_anuncios.sql`
+   13. `supabase/migrations/20261014120000_entregas_mantenimiento.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App

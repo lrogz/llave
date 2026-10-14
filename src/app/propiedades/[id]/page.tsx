@@ -15,6 +15,10 @@ import { CambiarPortada } from "./CambiarPortada";
 import { Portada, urlsPortada } from "@/components/Portada";
 import { SeccionDocumentos } from "@/components/Documentos";
 import { SeccionServicios } from "@/components/Servicios";
+import { FormMantenimiento, ListaMantenimiento, type FilaMant } from "@/components/Mantenimiento";
+import { crearInspeccion } from "@/app/inspecciones/actions";
+import { etiquetaTipo } from "@/lib/inspeccion";
+import { hoyMX } from "@/lib/crm";
 
 const TIPOS_PROP = [
   ["casa", "Casa"],
@@ -262,9 +266,72 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
 
             <SeccionServicios db={supabase} propiedadId={p.id} />
             <SeccionDocumentos db={supabase} ctx={{ propiedad_id: p.id }} volver={`/propiedades/${p.id}`} tipoSugerido="escrituras" />
+            <SeccionEntregas db={supabase} propiedadId={p.id} />
+            <SeccionMantenimiento db={supabase} propiedadId={p.id} />
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+type Db = Awaited<ReturnType<typeof sesion>>["supabase"];
+
+// Entrega y recepción de la casa (inventario con fotos y firma del inquilino).
+async function SeccionEntregas({ db, propiedadId }: { db: Db; propiedadId: string }) {
+  const { data, error } = await db.from("inspecciones").select("id, tipo, fecha, firmada_at, partidas").eq("propiedad_id", propiedadId).order("fecha", { ascending: false });
+  if (error) return null;
+  const filas = (data ?? []) as { id: string; tipo: string; fecha: string; firmada_at: string | null; partidas: { estado: string }[] }[];
+  return (
+    <section aria-label="Entrega y recepción" className="flex flex-col gap-3 rounded-2xl bg-white p-5 print:hidden">
+      <h2 className="font-bold">Entrega y recepción de la casa</h2>
+      {filas.length === 0 ? (
+        <p className="text-sm text-gris">Haz la entrega cuarto por cuarto con fotos y que el inquilino la firme: al final del contrato comparas y evitas pleitos por el depósito.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-borde-suave text-sm">
+          {filas.map((x) => (
+            <li key={x.id}>
+              <Link href={`/inspecciones/${x.id}`} className="flex items-center justify-between gap-3 py-2 hover:opacity-80">
+                <span>
+                  <span className="block font-semibold">{etiquetaTipo(x.tipo)}</span>
+                  <span className="text-xs text-gris">
+                    {formatoFecha(x.fecha)} · {x.partidas.filter((p) => p.estado).length} de {x.partidas.length} cuartos revisados
+                  </span>
+                </span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${x.firmada_at ? "bg-verde-claro text-verde-oscuro" : "bg-[#FFF4E0] text-[#7A4E00]"}`}>{x.firmada_at ? "Firmada" : "Sin firmar"}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {(["entrada", "salida", "rutina"] as const).map((tipo) => (
+          <form key={tipo} action={crearInspeccion}>
+            <input type="hidden" name="propiedad_id" value={propiedadId} />
+            <input type="hidden" name="tipo" value={tipo} />
+            <Boton estilo={tipo === "entrada" ? "primario" : "claro"} enviando="Creando…">
+              {tipo === "entrada" ? "Nueva entrega" : tipo === "salida" ? "Recepción (salida)" : "Revisión"}
+            </Boton>
+          </form>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function SeccionMantenimiento({ db, propiedadId }: { db: Db; propiedadId: string }) {
+  const { data, error } = await db.from("mantenimientos").select("id, titulo, cada_meses, proxima, quien_paga, activo, propiedades(id, nombre)").eq("propiedad_id", propiedadId).order("proxima");
+  if (error) return null;
+  return (
+    <section aria-label="Mantenimiento preventivo" className="flex flex-col gap-3 rounded-2xl bg-white p-5 print:hidden">
+      <h2 className="font-bold">Mantenimiento preventivo</h2>
+      <ListaMantenimiento filas={(data ?? []) as unknown as FilaMant[]} volver={`/propiedades/${propiedadId}`} />
+      <details>
+        <summary className="cursor-pointer text-sm font-semibold text-verde">+ Programar tarea</summary>
+        <div className="mt-3">
+          <FormMantenimiento propiedadId={propiedadId} volver={`/propiedades/${propiedadId}`} hoy={hoyMX()} />
+        </div>
+      </details>
+    </section>
   );
 }
