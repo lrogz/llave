@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
 import { CAMPOS_SOLICITUD, TIPOS_ARCHIVO, type DatosSolicitud } from "@/lib/solicitud";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { avisarEquipo } from "@/lib/push";
 
 const txt = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
 const ARCHIVOS = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic"];
@@ -35,6 +36,7 @@ export async function enviarSolicitud(_: unknown, f: FormData): Promise<{ ok: bo
     .eq("id", s.id);
   if (error) return { ok: false, mensaje: "No pudimos guardar. Intenta de nuevo." };
   revalidatePath(`/s/${txt(f, "token", 40)}`);
+  if (s.estado === "pendiente") avisarEquipo(s.organizacion_id, { titulo: "Solicitud de renta recibida", cuerpo: `${nombre} llenó su solicitud. Revisa sus datos y documentos.`, url: `/solicitudes/${s.id}`, tag: `solicitud-${s.id}` });
   return { ok: true, mensaje: "¡Gracias! Recibimos tu solicitud. Ahora sube tus documentos abajo." };
 }
 

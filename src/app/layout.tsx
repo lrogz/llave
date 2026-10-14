@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, DM_Mono, DM_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -9,7 +9,13 @@ const mono = DM_Mono({ variable: "--font-dm-mono", subsets: ["latin"], weight: [
 export const metadata: Metadata = {
   title: "Black Key · Administración de propiedades",
   description: "Tus propiedades, tickets y proveedores en un solo lugar. Sin Excel ni WhatsApps sueltos.",
+  applicationName: "Black Key",
+  appleWebApp: { capable: true, title: "Black Key", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+  formatDetection: { telephone: false },
 };
+
+export const viewport: Viewport = { themeColor: "#14201c", viewportFit: "cover" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

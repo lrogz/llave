@@ -6,6 +6,7 @@ import { formatoFecha } from "@/lib/datos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { origen } from "@/lib/util";
 import { anuncioPorToken } from "./datos";
+import { avisarEquipo } from "@/lib/push";
 
 const txt = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -65,5 +66,6 @@ export async function meInteresa(_: unknown, f: FormData): Promise<{ ok: boolean
       })),
     ).catch(() => {});
   }
+  avisarEquipo(p.organizacion_id, { titulo: `Nuevo interesado en ${p.nombre}`, cuerpo: `${nombre} quiere rentar. Contáctalo pronto.`, url: `/propiedades/${p.id}/anuncio`, tag: `prospecto-${p.id}` });
   return { ok: true, mensaje: "¡Listo! Recibimos tus datos y te contactaremos pronto." };
 }

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { pesos } from "@/lib/datos";
+import { avisarEquipo } from "@/lib/push";
 
 type Respuesta =
   | { modo: "remota"; monto: string; incluyeMateriales: boolean; garantiaDias: string; fechas: string[]; notas: string }
@@ -76,5 +78,6 @@ export async function responderSolicitud(token: string, r: Respuesta): Promise<{
   }
 
   revalidatePath(`/c/${token}`);
+  avisarEquipo(sol.organizacion_id, { titulo: "Nueva cotización", cuerpo: r.modo === "visita" ? "Un proveedor propuso fecha de visita para cotizar." : `Un proveedor cotizó ${pesos.format(Number(fila.monto))}. Compárala y mándala al dueño.`, url: `/tickets/${sol.ticket_id}`, tag: `ticket-${sol.ticket_id}` });
   return { ok: true };
 }

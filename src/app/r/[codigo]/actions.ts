@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { avisarEquipo } from "@/lib/push";
 import {
   BUCKET,
   CATEGORIAS,
@@ -70,6 +71,7 @@ export async function crearReporte(
     .select("id, token_publico")
     .single();
   if (error || !ticket) return { ok: false, error: "No pudimos guardar tu reporte. Intenta de nuevo." };
+  avisarEquipo(propiedad.organizacion_id, { titulo: datos.urgente ? "🚨 Reporte urgente" : "Nuevo reporte", cuerpo: descripcion.slice(0, 160), url: `/tickets/${ticket.id}`, tag: `ticket-${ticket.id}` });
 
   const subidas: { path: string; token: string }[] = [];
   for (const a of archivos) {

@@ -5,6 +5,7 @@ import { estaLibre, horarioValido } from "@/lib/agenda";
 import { avisarProveedor } from "@/lib/citas";
 import { origen } from "@/lib/util";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { avisarEquipo } from "@/lib/push";
 
 // El inquilino elige uno de los horarios libres del proveedor.
 export async function elegirHorario(_: unknown, f: FormData): Promise<{ ok: boolean; mensaje: string } | null> {
@@ -15,7 +16,7 @@ export async function elegirHorario(_: unknown, f: FormData): Promise<{ ok: bool
   const fin = new Date(b);
   if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime()) || fin <= inicio) return { ok: false, mensaje: "Elige un horario." };
   const admin = createAdminClient();
-  const { data: c } = await admin.from("citas").select("id, estado, proveedor_id, proveedores(horario)").eq("token", token).maybeSingle();
+  const { data: c } = await admin.from("citas").select("id, organizacion_id, ticket_id, estado, proveedor_id, proveedores(nombre, horario)").eq("token", token).maybeSingle();
   if (!c || c.estado !== "por_elegir") return { ok: false, mensaje: "Esta visita ya tiene horario o fue cancelada." };
   const horario = (c.proveedores as unknown as { horario: unknown } | null)?.horario;
   // El horario debe caer en la agenda del proveedor (que no manden uno inventado).
@@ -35,6 +36,7 @@ export async function elegirHorario(_: unknown, f: FormData): Promise<{ ok: bool
   const { error } = await admin.from("citas").update({ inicio: inicio.toISOString(), fin: fin.toISOString(), estado: "confirmada" }).eq("id", c.id).eq("estado", "por_elegir");
   if (error) return { ok: false, mensaje: error.code === "23505" ? "Ese horario se acaba de ocupar. Elige otro." : "No pudimos guardar el horario." };
   await avisarProveedor(admin, c.id, await origen());
+  avisarEquipo(c.organizacion_id, { titulo: "El inquilino eligió horario", cuerpo: `Visita de ${(c.proveedores as unknown as { nombre: string } | null)?.nombre ?? "el proveedor"} confirmada.`, url: c.ticket_id ? `/tickets/${c.ticket_id}` : "/hoy", tag: `cita-${c.id}` });
   revalidatePath(`/agenda/${token}`);
   return { ok: true, mensaje: "¡Listo! Quedó agendada." };
 }

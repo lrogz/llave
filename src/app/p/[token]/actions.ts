@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET, extension } from "@/lib/datos";
+import { avisarEquipo } from "@/lib/push";
 
 const MAX = 4 * 1024 * 1024; // límite de envío de Vercel; las fotos llegan ya reducidas
 const TIPOS = ["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"];
@@ -25,5 +26,6 @@ export async function subirComprobante(token: string, form: FormData): Promise<{
   if (error) return { ok: false, error: "No pudimos subir el archivo. Intenta de nuevo." };
 
   await admin.from("cobros_renta").update({ comprobante_path: path, estado: "por_confirmar", nota: null }).eq("id", cobro.id);
+  avisarEquipo(cobro.organizacion_id, { titulo: "Comprobante de pago recibido", cuerpo: "Un inquilino subió su comprobante. Revísalo para confirmar la renta.", url: "/pagos", tag: `cobro-${cobro.id}` });
   return { ok: true };
 }

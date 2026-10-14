@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { avisarEquipo } from "@/lib/push";
 
 export async function decidir(token: string, decision: "aprobada" | "rechazada", comentario: string) {
   if (decision !== "aprobada" && decision !== "rechazada") return { ok: false, error: "Decisión no válida." };
   const admin = createAdminClient();
   const { data: ap } = await admin
     .from("aprobaciones")
-    .select("id, decision, cotizacion_id, cotizaciones(ticket_id, estado)")
+    .select("id, organizacion_id, decision, cotizacion_id, cotizaciones(ticket_id, estado)")
     .eq("token", token)
     .maybeSingle();
   if (!ap) return { ok: false, error: "Este link ya no es válido." };
@@ -33,5 +34,11 @@ export async function decidir(token: string, decision: "aprobada" | "rechazada",
   }
 
   revalidatePath(`/a/${token}`);
+  avisarEquipo(ap.organizacion_id, {
+    titulo: decision === "aprobada" ? "El dueño aprobó ✓" : "El dueño rechazó la cotización",
+    cuerpo: decision === "aprobada" ? "Ya puedes avisarle al proveedor y agendar la visita." : "Revisa su comentario y busca otra opción.",
+    url: `/tickets/${cot.ticket_id}`,
+    tag: `ticket-${cot.ticket_id}`,
+  });
   return { ok: true };
 }

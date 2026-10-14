@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUCKET, extension } from "./datos";
 import { primerNombre } from "./crm";
 import { descargarMedia, diezDigitos, enviarTexto } from "./whatsapp";
+import { avisarEquipo } from "@/lib/push";
 
 // Bot de reportes por WhatsApp: el inquilino escribe o manda fotos al número de Black Key
 // y se crea (o se completa) su reporte, igual que con el QR.
@@ -108,6 +109,7 @@ export async function procesarMensaje(db: SupabaseClient, m: MensajeEntrante, ba
       .single();
     if (error || !data) throw new Error(`No se pudo crear el ticket: ${error?.message}`);
     ticket = data;
+    avisarEquipo(org, { titulo: "Nuevo reporte por WhatsApp", cuerpo: `${inq.nombre ?? "Un inquilino"}: ${(m.texto?.trim() || "mandó fotos").slice(0, 150)}`, url: `/tickets/${data.id}`, tag: `ticket-${data.id}` });
   } else if (m.texto?.trim()) {
     const descripcion = [ticket.descripcion, m.texto.trim()].filter(Boolean).join("\n");
     await db.from("tickets").update({ descripcion: descripcion.slice(0, 4000) }).eq("id", ticket.id);

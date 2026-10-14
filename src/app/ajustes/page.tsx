@@ -9,12 +9,14 @@ import { correoConfigurado } from "@/lib/correo";
 import { telefonoValido, whatsappConfigurado } from "@/lib/whatsapp";
 import { formatoFechaHora } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
+import { pushConfigurado } from "@/lib/push";
+import { AppCelular } from "@/components/AppCelular";
 import { guardarAvisos, guardarNombre } from "./actions";
 import { BotonMandarAhora, FormContrasena, FormCorreoAvisos } from "./Formularios";
 
 export const metadata: Metadata = { title: "Ajustes · Black Key" };
 
-const TIPO_TEXTO: Record<string, string> = { renta: "Aviso de renta", vencida: "Renta vencida", reporte: "Reporte al dueño", renovacion: "Renovación", servicios: "Servicio", resumen: "Resumen diario" };
+const TIPO_TEXTO: Record<string, string> = { renta: "Aviso de renta", vencida: "Renta vencida", reporte: "Reporte al dueño", renovacion: "Renovación", servicios: "Servicio", citas: "Visita", resumen: "Resumen diario" };
 
 export default function Ajustes() {
   return (
@@ -56,6 +58,12 @@ async function Contenido() {
       <Menu activo="Ajustes" nombreOrg={org.nombre} />
       <main className="flex min-w-0 flex-[999_1_560px] flex-col gap-5 px-5 py-8 sm:px-10">
         <h1 className="font-display text-4xl font-bold tracking-tight">Ajustes</h1>
+
+        <section id="app" aria-label="App en tu celular" className="flex scroll-mt-6 flex-col gap-3 rounded-2xl bg-white p-5">
+          <h2 className="font-bold">Black Key en tu celular</h2>
+          <p className="text-sm text-gris">Instálala como app (sin tienda de apps) y recibe avisos al instante. Cada persona del equipo la activa en su propio celular.</p>
+          <AppCelular configurado={pushConfigurado()} />
+        </section>
 
         <div className="flex flex-wrap items-start gap-5">
           <div className="flex min-w-0 flex-[1.4_1_380px] flex-col gap-5">

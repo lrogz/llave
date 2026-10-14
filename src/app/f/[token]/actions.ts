@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { BUCKET } from "@/lib/datos";
 import { decodificarFirma, huella } from "@/lib/firma";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { avisarEquipo } from "@/lib/push";
 
 const txt = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -37,5 +38,6 @@ export async function firmarContrato(_: unknown, f: FormData): Promise<{ ok: boo
 
   const { count } = await admin.from("firmas_contrato").select("id", { count: "exact", head: true }).eq("documento_id", firma.documento_id).is("firmada_at", null);
   if (!count) await admin.from("documentos_contrato").update({ estado: "firmado" }).eq("id", firma.documento_id);
+  avisarEquipo(firma.organizacion_id, { titulo: count ? `${firma.nombre} firmó el contrato` : "Contrato firmado por todos ✓", cuerpo: count ? `Faltan ${count} ${count === 1 ? "firma" : "firmas"}.` : "Ya puedes descargarlo con sus firmas.", url: `/contratos/${firma.documento_id}`, tag: `contrato-${firma.documento_id}` });
   return { ok: true, mensaje: "¡Listo! Tu firma quedó registrada. Puedes volver a este link para consultar o descargar el contrato." };
 }

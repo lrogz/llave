@@ -9,6 +9,7 @@ import { sesionConOrg } from "@/lib/sesion";
 import { estadoPlan, GRATIS_HASTA } from "@/lib/plan";
 import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
 import { inicioDeMes, mesAnterior, mesTexto } from "@/lib/reporte";
+import { BannerApp } from "@/components/BannerApp";
 
 export const metadata: Metadata = { title: "Hoy · Black Key" };
 
@@ -162,6 +163,8 @@ async function Contenido() {
           <h1 className="font-display text-4xl font-bold tracking-tight">Hoy</h1>
           <p className="mt-1 text-gris">{nada ? "Todo al día. Nada urgente que atender." : "Lo que necesita tu atención, en orden."}</p>
         </header>
+
+        <BannerApp />
 
         {!plan.pagando && (plan.enPrueba ? plan.diasPrueba <= 7 : plan.propiedades > GRATIS_HASTA) && (
           <Link href="/plan" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-tinta p-4 text-white">

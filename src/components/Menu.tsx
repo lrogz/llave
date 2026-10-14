@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { salir } from "@/app/actions";
 import { Logo } from "./Logo";
+import { RegistrarSW } from "./RegistrarSW";
 
 type Seccion = "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Liquidaciones" | "Indicadores" | "Mantenimiento" | "Proveedores" | "Documentos" | "Equipo" | "Ajustes" | "Plan";
 
@@ -44,6 +45,7 @@ export function Menu({ activo, nombreOrg }: { activo: Seccion; nombreOrg: string
   const enMas = !PRINCIPALES.includes(activo);
   return (
     <>
+      <RegistrarSW />
       {/* Computadora y tableta: menú lateral */}
       <nav aria-label="Secciones" className="hidden min-w-52 flex-[1_1_220px] flex-col gap-7 bg-tinta px-4 py-7 text-[#C9D6D0] md:flex md:max-w-64">
         <Link href="/" className="px-2.5">
