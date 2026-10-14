@@ -6,6 +6,7 @@ import { campo } from "@/components/Seguimiento";
 import Link from "next/link";
 import { AVISOS, valido, type ConfigAvisos } from "@/lib/avisos";
 import { correoConfigurado } from "@/lib/correo";
+import { telefonoValido, whatsappConfigurado } from "@/lib/whatsapp";
 import { formatoFechaHora } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
 import { guardarAvisos, guardarNombre } from "./actions";
@@ -30,23 +31,25 @@ async function Contenido() {
     supabase.from("miembros").select("rol").eq("organizacion_id", org.id).eq("user_id", user.id).maybeSingle(),
     supabase.from("avisos_enviados").select("tipo, para, asunto, created_at").eq("organizacion_id", org.id).order("created_at", { ascending: false }).limit(15),
     supabase.from("miembros").select("email, rol").eq("organizacion_id", org.id),
-    supabase.from("duenos").select("id, nombre, email, propiedades(id)").eq("organizacion_id", org.id).order("nombre").limit(500),
-    supabase.from("inquilinos").select("id, nombre, email, contratos(activo)").eq("organizacion_id", org.id).order("nombre").limit(500),
+    supabase.from("duenos").select("id, nombre, email, telefono, propiedades(id)").eq("organizacion_id", org.id).order("nombre").limit(500),
+    supabase.from("inquilinos").select("id, nombre, email, telefono, contratos(activo)").eq("organizacion_id", org.id).order("nombre").limit(500),
   ]);
   const admin = yo?.rol === "propietario" || yo?.rol === "admin";
   const avisos = (o?.avisos ?? {}) as ConfigAvisos;
+  const conCorreo = correoConfigurado();
+  const conWA = whatsappConfigurado();
   const administradoras = (equipo ?? []).filter((m) => (m.rol === "propietario" || m.rol === "admin") && valido(m.email)).map((m) => m.email as string);
   const destino = valido(avisos.correo) ? [avisos.correo] : administradoras;
+  const alcanzable = (x: { email: string | null; telefono: string | null }) => valido(x.email) || (conWA && avisos.whatsapp !== false && telefonoValido(x.telefono));
   // Solo cuentan quienes recibirían avisos: dueños con propiedades e inquilinos con contrato activo.
   const sinCorreo = [
-    ...((duenos ?? []) as { id: string; nombre: string; email: string | null; propiedades: { id: string }[] }[])
-      .filter((d) => d.propiedades.length && !valido(d.email))
+    ...((duenos ?? []) as { id: string; nombre: string; email: string | null; telefono: string | null; propiedades: { id: string }[] }[])
+      .filter((d) => d.propiedades.length && !alcanzable(d))
       .map((d) => ({ id: d.id, nombre: d.nombre, quien: "Dueño", href: `/personas/duenos/${d.id}`, pierde: "reporte mensual" })),
-    ...((inquilinos ?? []) as { id: string; nombre: string; email: string | null; contratos: { activo: boolean }[] }[])
-      .filter((i) => i.contratos.some((c) => c.activo) && !valido(i.email))
+    ...((inquilinos ?? []) as { id: string; nombre: string; email: string | null; telefono: string | null; contratos: { activo: boolean }[] }[])
+      .filter((i) => i.contratos.some((c) => c.activo) && !alcanzable(i))
       .map((i) => ({ id: i.id, nombre: i.nombre, quien: "Inquilino", href: `/personas/inquilinos/${i.id}`, pierde: "avisos de renta y renovación" })),
   ];
-  const conCorreo = correoConfigurado();
 
   return (
     <div className="flex flex-1 flex-wrap bg-fondo">
@@ -57,11 +60,11 @@ async function Contenido() {
         <div className="flex flex-wrap items-start gap-5">
           <div className="flex min-w-0 flex-[1.4_1_380px] flex-col gap-5">
             <section aria-label="Avisos automáticos" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
-              <h2 className="font-bold">Avisos automáticos por correo</h2>
-              <p className="text-sm text-gris">Cada mañana Black Key manda estos correos por ti. Solo llegan a quien tenga correo registrado. Las respuestas te llegan a ti.</p>
-              {!conCorreo && (
+              <h2 className="font-bold">Avisos automáticos</h2>
+              <p className="text-sm text-gris">Cada mañana Black Key manda estos avisos por ti: por correo a quien tenga correo y por WhatsApp a quien tenga celular. Las respuestas por correo te llegan a ti.</p>
+              {!conCorreo && !conWA && (
                 <p className="rounded-xl bg-naranja-claro p-3 text-sm text-naranja-oscuro">
-                  Falta conectar el correo de envío. Mientras tanto no sale ningún aviso. (Pasos en el README: RESEND_API_KEY y AVISOS_REMITENTE en Vercel.)
+                  Falta conectar el correo o WhatsApp. Mientras tanto no sale ningún aviso. (Pasos en el README.)
                 </p>
               )}
               <form action={guardarAvisos} className="flex flex-col gap-2">
@@ -74,6 +77,13 @@ async function Contenido() {
                     </span>
                   </label>
                 ))}
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-borde p-3 has-checked:border-verde has-checked:bg-verde-claro">
+                  <input type="checkbox" name="whatsapp" defaultChecked={avisos.whatsapp !== false} disabled={!admin} className="mt-1 size-4 accent-verde" />
+                  <span className="text-sm">
+                    <span className="block font-semibold">Mandarlos también por WhatsApp</span>
+                    <span className="text-xs text-gris">{conWA ? "WhatsApp conectado ✓" : "WhatsApp todavía no está conectado (pasos en el README)"}</span>
+                  </span>
+                </label>
                 {admin && (
                   <Boton className="self-start" estilo="claro">
                     Guardar avisos
@@ -84,13 +94,13 @@ async function Contenido() {
             </section>
 
             <section aria-label="Sin correo" className="flex flex-col gap-2 rounded-2xl bg-white p-5">
-              <h2 className="font-bold">Sin correo: no reciben avisos</h2>
+              <h2 className="font-bold">{conWA ? "Sin correo ni celular" : "Sin correo"}: no reciben avisos</h2>
               {sinCorreo.length === 0 ? (
                 <p className="text-sm text-gris">Todos tus dueños e inquilinos activos tienen correo. 👌</p>
               ) : (
                 <>
                   <p className="text-sm text-gris">
-                    {sinCorreo.length} {sinCorreo.length === 1 ? "persona" : "personas"} sin correo válido. Agrégalo en su ficha para que les lleguen los avisos.
+                    {sinCorreo.length} {sinCorreo.length === 1 ? "persona" : "personas"} {conWA ? "sin correo ni celular válido" : "sin correo válido"}. Agrégalo en su ficha para que les lleguen los avisos.
                   </p>
                   <ul className="flex flex-col divide-y divide-borde-suave text-sm">
                     {sinCorreo.map((x) => (

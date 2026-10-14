@@ -45,7 +45,7 @@ export default function Privacidad() {
             "Crear y operar tu cuenta y la de tu equipo.",
             "Registrar y dar seguimiento a reportes de mantenimiento, cotizaciones y aprobaciones.",
             "Generar cobros, recibos, recordatorios y reportes mensuales.",
-            "Enviar correos y links de la operación (avisos de renta, reportes, invitaciones).",
+            "Enviar correos, mensajes de WhatsApp y links de la operación (avisos de renta, reportes, invitaciones) y recibir reportes por WhatsApp.",
             "Cobrar la suscripción, prevenir fraudes y cumplir obligaciones legales.",
           ]}
         />
@@ -59,6 +59,7 @@ export default function Privacidad() {
             "Supabase (base de datos y almacenamiento de archivos).",
             "Vercel (alojamiento de la aplicación).",
             "Resend (envío de correos).",
+            "Meta / WhatsApp Business (envío y recepción de mensajes de WhatsApp).",
             "Stripe (procesamiento de pagos de la suscripción).",
           ]}
         />

@@ -17,7 +17,11 @@ export async function guardarAvisos(f: FormData) {
   const { supabase, org } = await soyAdmin();
   const { data } = await supabase.from("organizaciones").select("avisos").eq("id", org.id).single();
   const previo = (data?.avisos ?? {}) as ConfigAvisos;
-  const avisos = { ...Object.fromEntries(AVISOS.map((a) => [a.clave, f.get(a.clave) === "on"])), ...(previo.correo ? { correo: previo.correo } : {}) };
+  const avisos: ConfigAvisos = {
+    ...Object.fromEntries(AVISOS.map((a) => [a.clave, f.get(a.clave) === "on"])),
+    ...(previo.correo ? { correo: previo.correo } : {}),
+    whatsapp: f.get("whatsapp") === "on",
+  };
   await supabase.from("organizaciones").update({ avisos }).eq("id", org.id);
   revalidatePath("/ajustes");
 }
@@ -61,7 +65,7 @@ export async function mandarAhora(): Promise<{ ok: boolean; mensaje: string }> {
   const r = await correrAvisos(createAdminClient(), { soloOrg: org.id, base: await origen() });
   revalidatePath("/ajustes");
   const res = r.resultados[0];
-  if (!r.correo) return { ok: false, mensaje: "Falta conectar el correo (RESEND_API_KEY y AVISOS_REMITENTE en Vercel)." };
+  if (!r.correo && !r.whatsapp) return { ok: false, mensaje: "Falta conectar el correo (RESEND_API_KEY y AVISOS_REMITENTE en Vercel) o WhatsApp." };
   if (res?.error) return { ok: false, mensaje: `Se mandaron ${res.enviados}. Error: ${res.error}` };
   return { ok: true, mensaje: res?.enviados ? `Se mandaron ${res.enviados} avisos.` : "Hoy no había avisos por mandar (o ya se habían mandado)." };
 }

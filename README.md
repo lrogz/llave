@@ -59,6 +59,8 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    7. `supabase/migrations/20261010100000_equipo.sql`
    8. `supabase/migrations/20261010110000_avisos.sql`
    9. `supabase/migrations/20261010120000_planes.sql`
+   10. `supabase/migrations/20261014090000_liquidaciones.sql`
+   11. `supabase/migrations/20261014100000_whatsapp.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -128,6 +130,31 @@ Están en `/privacidad` y `/terminos` (ligados desde la página de venta, el reg
 1. En Vercel agrega `LEGAL_RESPONSABLE` (tu nombre o razón social), `LEGAL_DOMICILIO` y `LEGAL_CORREO` y Redeploy.
 2. Pide a un abogado que los revise; son una base, no asesoría legal.
 
+### 7. WhatsApp automático (opcional)
+
+Un número de WhatsApp Business para Black Key: manda los avisos (renta, vencida, reporte al dueño, renovación, servicios) y recibe reportes de los inquilinos (texto, fotos, video, audio → ticket con link de seguimiento).
+
+1. Consigue un número que **no** esté usando la app de WhatsApp (uno nuevo o uno que des de baja ahí).
+2. [developers.facebook.com](https://developers.facebook.com) › Create app › tipo **Business** › agrega el producto **WhatsApp** y liga tu portafolio comercial (Meta Business). Verifica el negocio para subir los límites de envío.
+3. WhatsApp › API Setup: agrega tu número y copia el **Phone number ID** (`WHATSAPP_PHONE_ID`).
+4. Token permanente: Business Settings › Users › System users › Add (Admin) › Generate token con `whatsapp_business_messaging` y `whatsapp_business_management` (`WHATSAPP_TOKEN`).
+5. App settings › Basic › **App secret** (`WHATSAPP_APP_SECRET`).
+6. WhatsApp Manager › Message templates › crea estas 5, categoría **Utility**, idioma **Spanish (MEX)**, con el texto idéntico:
+
+   | Nombre | Texto |
+   | --- | --- |
+   | `bk_aviso_renta` | Hola {{1}}, te escribimos de {{2}}. La renta de {{3}} por {{4}} vence el {{5}}. Aquí ves los datos para depositar y puedes subir tu comprobante: {{6}} ¡Gracias! |
+   | `bk_renta_vencida` | Hola {{1}}, te escribimos de {{2}}. La renta de {{3}} por {{4}} venció el {{5}}. Si ya pagaste, sube tu comprobante aquí: {{6}} ¡Gracias! |
+   | `bk_reporte_dueno` | Hola {{1}}, te escribimos de {{2}}. Ya está tu reporte de {{3}}: rentas, trabajos con fotos y tu saldo. Puedes verlo aquí: {{4}} Saludos. |
+   | `bk_renovacion` | Hola {{1}}, te escribimos de {{2}}. Tu contrato de {{3}} termina el {{4}}. ¿Te gustaría renovar? Responde este mensaje y te compartimos las condiciones. |
+   | `bk_servicio` | Hola {{1}}, te escribimos de {{2}}. El recibo de {{3}} de {{4}} vence el {{5}}. Te lo recordamos para que no se generen recargos. |
+
+7. En Vercel agrega `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_APP_SECRET` y `WHATSAPP_VERIFY_TOKEN` (un texto que tú inventes) y Redeploy.
+8. WhatsApp › Configuration › Webhook: Callback URL `https://TU-DIRECCION/api/whatsapp`, Verify token = el mismo `WHATSAPP_VERIFY_TOKEN` › Verify and save › en Webhook fields suscribe **messages**.
+9. Prueba: escribe al número desde el celular de un inquilino registrado (con contrato activo) → se crea el ticket y le responde con su link. En Ajustes › Avisos automáticos debe decir "WhatsApp conectado ✓".
+
+Costos: Meta cobra los mensajes de plantilla (avisos); las respuestas del bot dentro de las 24 h después de que el inquilino escribe no llevan plantilla. Revisa la tarifa vigente para México en Meta.
+
 ## Seguridad
 
 - Cada administradora solo ve sus datos (RLS con `es_miembro` / `es_admin`), también en archivos: cada una solo sube y lee en su carpeta del bucket `llave`.
@@ -153,5 +180,6 @@ Están en `/privacidad` y `/terminos` (ligados desde la página de venta, el reg
 - [x] Comparación de cotizaciones y link de aprobación para el dueño
 - [ ] Ficha completa: inquilino y contrato; importación desde Excel
 - [ ] Fotos de antes y después al cerrar
-- [ ] Bandeja de WhatsApp (WhatsApp Business API vía Twilio): mensajes automáticos en vez de abrir WhatsApp a mano
+- [x] WhatsApp automático (Cloud API de Meta): avisos con plantillas y reportes del inquilino por WhatsApp
+- [ ] Bandeja de WhatsApp: ver y contestar las conversaciones desde la app
 - [ ] Pagos y servicios: recordatorios de renta, comprobantes y semáforo de luz, agua, gas y predial

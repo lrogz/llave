@@ -1045,3 +1045,12 @@ create policy "miembros leen" on public.liquidaciones for select to authenticate
 create policy "miembros crean" on public.liquidaciones for insert to authenticated with check (public.es_miembro(organizacion_id));
 create policy "admins borran" on public.liquidaciones for delete to authenticated using (public.es_admin(organizacion_id));
 
+
+-- ═════ 20261014100000_whatsapp.sql ═════
+-- Black Key · WhatsApp automático
+-- Los mensajes que llegan por WhatsApp se guardan en `mensajes` (Bandeja). Este índice evita
+-- procesar dos veces el mismo mensaje cuando Meta reintenta el aviso.
+--
+-- Cómo correrlo: Supabase › SQL Editor › pegar todo este archivo › Run (después de los anteriores).
+
+create unique index if not exists mensajes_externo_idx on public.mensajes (externo_id) where externo_id is not null;
