@@ -16,10 +16,12 @@ export const AVISOS: { clave: TipoAviso; texto: string; detalle: string }[] = [
 ];
 
 type Candidato = { clave: string; tipo: TipoAviso; correo: Correo };
-type Org = { id: string; nombre: string; avisos: Partial<Record<TipoAviso, boolean>> | null; miembros: { email: string | null; rol: string }[] };
+// `avisos.correo`: correo opcional para el resumen y las respuestas (si no, las administradoras del equipo).
+export type ConfigAvisos = Partial<Record<TipoAviso, boolean>> & { correo?: string };
+type Org = { id: string; nombre: string; avisos: ConfigAvisos | null; miembros: { email: string | null; rol: string }[] };
 export type ResultadoOrg = { org: string; enviados: number; porTipo: Record<string, number>; error?: string };
 
-const valido = (e?: string | null): e is string => !!e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+export const valido = (e?: string | null): e is string => !!e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 
 // Corre los avisos del día. Con `soloOrg` lo hace para una administradora (botón "mandar ahora").
 export async function correrAvisos(db: SupabaseClient, opciones: { soloOrg?: string; base?: string } = {}) {
@@ -43,7 +45,9 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
   await db.rpc("generar_cobros", { org: org.id });
   const activo = (t: TipoAviso) => org.avisos?.[t] !== false;
   const hoy = hoyMX();
-  const responsables = org.miembros.filter((m) => (m.rol === "propietario" || m.rol === "admin") && valido(m.email)).map((m) => m.email!);
+  const responsables = valido(org.avisos?.correo)
+    ? [org.avisos.correo.toLowerCase()]
+    : org.miembros.filter((m) => (m.rol === "propietario" || m.rol === "admin") && valido(m.email)).map((m) => m.email!);
   const responderA = responsables[0] ?? null;
   const c: Candidato[] = [];
   const correo = (para: string, asunto: string, html: string): Correo => ({ para, asunto, html, responderA });

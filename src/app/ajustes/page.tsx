@@ -3,12 +3,13 @@ import { Suspense } from "react";
 import { Boton } from "@/components/Boton";
 import { Cargando, Menu } from "@/components/Menu";
 import { campo } from "@/components/Seguimiento";
-import { AVISOS, type TipoAviso } from "@/lib/avisos";
+import Link from "next/link";
+import { AVISOS, valido, type ConfigAvisos } from "@/lib/avisos";
 import { correoConfigurado } from "@/lib/correo";
 import { formatoFechaHora } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
 import { guardarAvisos, guardarNombre } from "./actions";
-import { BotonMandarAhora, FormContrasena } from "./Formularios";
+import { BotonMandarAhora, FormContrasena, FormCorreoAvisos } from "./Formularios";
 
 export const metadata: Metadata = { title: "Ajustes · Black Key" };
 
@@ -24,13 +25,27 @@ export default function Ajustes() {
 
 async function Contenido() {
   const { supabase, org, user } = await sesionConOrg();
-  const [{ data: o }, { data: yo }, { data: enviados }] = await Promise.all([
+  const [{ data: o }, { data: yo }, { data: enviados }, { data: equipo }, { data: duenos }, { data: inquilinos }] = await Promise.all([
     supabase.from("organizaciones").select("nombre, avisos").eq("id", org.id).single(),
     supabase.from("miembros").select("rol").eq("organizacion_id", org.id).eq("user_id", user.id).maybeSingle(),
     supabase.from("avisos_enviados").select("tipo, para, asunto, created_at").eq("organizacion_id", org.id).order("created_at", { ascending: false }).limit(15),
+    supabase.from("miembros").select("email, rol").eq("organizacion_id", org.id),
+    supabase.from("duenos").select("id, nombre, email, propiedades(id)").eq("organizacion_id", org.id).order("nombre").limit(500),
+    supabase.from("inquilinos").select("id, nombre, email, contratos(activo)").eq("organizacion_id", org.id).order("nombre").limit(500),
   ]);
   const admin = yo?.rol === "propietario" || yo?.rol === "admin";
-  const avisos = (o?.avisos ?? {}) as Partial<Record<TipoAviso, boolean>>;
+  const avisos = (o?.avisos ?? {}) as ConfigAvisos;
+  const administradoras = (equipo ?? []).filter((m) => (m.rol === "propietario" || m.rol === "admin") && valido(m.email)).map((m) => m.email as string);
+  const destino = valido(avisos.correo) ? [avisos.correo] : administradoras;
+  // Solo cuentan quienes recibirían avisos: dueños con propiedades e inquilinos con contrato activo.
+  const sinCorreo = [
+    ...((duenos ?? []) as { id: string; nombre: string; email: string | null; propiedades: { id: string }[] }[])
+      .filter((d) => d.propiedades.length && !valido(d.email))
+      .map((d) => ({ id: d.id, nombre: d.nombre, quien: "Dueño", href: `/personas/duenos/${d.id}`, pierde: "reporte mensual" })),
+    ...((inquilinos ?? []) as { id: string; nombre: string; email: string | null; contratos: { activo: boolean }[] }[])
+      .filter((i) => i.contratos.some((c) => c.activo) && !valido(i.email))
+      .map((i) => ({ id: i.id, nombre: i.nombre, quien: "Inquilino", href: `/personas/inquilinos/${i.id}`, pierde: "avisos de renta y renovación" })),
+  ];
   const conCorreo = correoConfigurado();
 
   return (
@@ -68,6 +83,34 @@ async function Contenido() {
               {admin && <BotonMandarAhora />}
             </section>
 
+            <section aria-label="Sin correo" className="flex flex-col gap-2 rounded-2xl bg-white p-5">
+              <h2 className="font-bold">Sin correo: no reciben avisos</h2>
+              {sinCorreo.length === 0 ? (
+                <p className="text-sm text-gris">Todos tus dueños e inquilinos activos tienen correo. 👌</p>
+              ) : (
+                <>
+                  <p className="text-sm text-gris">
+                    {sinCorreo.length} {sinCorreo.length === 1 ? "persona" : "personas"} sin correo válido. Agrégalo en su ficha para que les lleguen los avisos.
+                  </p>
+                  <ul className="flex flex-col divide-y divide-borde-suave text-sm">
+                    {sinCorreo.map((x) => (
+                      <li key={x.quien + x.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                        <span>
+                          <span className="font-semibold">{x.nombre}</span>
+                          <span className="block text-xs text-gris">
+                            {x.quien} · sin {x.pierde}
+                          </span>
+                        </span>
+                        <Link href={x.href} className="flex min-h-10 items-center rounded-xl border border-borde px-3 font-bold hover:border-verde">
+                          Agregar correo
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+
             <section aria-label="Últimos avisos enviados" className="flex flex-col gap-2 rounded-2xl bg-white p-5">
               <h2 className="font-bold">Últimos avisos enviados</h2>
               {(enviados ?? []).length === 0 ? (
@@ -92,6 +135,15 @@ async function Contenido() {
               <h2 className="font-bold">Tu contraseña</h2>
               <p className="text-sm text-gris">Para entrar con {user.email} sin esperar el link del correo.</p>
               <FormContrasena />
+            </section>
+
+            <section aria-label="Tu resumen y respuestas" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
+              <h2 className="font-bold">Tu resumen y las respuestas</h2>
+              <p className="text-sm text-gris">
+                El resumen diario y las respuestas de inquilinos y dueños llegan a:{" "}
+                <strong className="text-tinta">{destino.length ? destino.join(", ") : "nadie todavía"}</strong>
+              </p>
+              {admin && <FormCorreoAvisos actual={avisos.correo ?? ""} porDefecto={administradoras.join(", ")} />}
             </section>
 
             {admin && (

@@ -13,14 +13,16 @@ export async function guardarDueno(form: FormData) {
   const propiedadId = String(form.get("propiedad_id") ?? "");
   const nombre = String(form.get("nombre") ?? "").trim().slice(0, 120);
   const telefono = String(form.get("telefono") ?? "").trim().slice(0, 30);
+  const email = String(form.get("email") ?? "").trim().toLowerCase().slice(0, 160);
   if (!nombre) return;
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Ese correo no parece válido.");
 
   const { data: propiedad } = await supabase.from("propiedades").select("id").eq("id", propiedadId).maybeSingle();
   if (!propiedad) throw new Error("No encontramos la propiedad.");
 
   const { data: dueno, error } = await supabase
     .from("duenos")
-    .insert({ organizacion_id: org.id, nombre, telefono: telefono || null })
+    .insert({ organizacion_id: org.id, nombre, telefono: telefono || null, email: email || null })
     .select("id")
     .single();
   if (error || !dueno) throw new Error("No pudimos guardar al dueño.");

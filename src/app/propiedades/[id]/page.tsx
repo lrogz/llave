@@ -128,6 +128,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                     <input name="nombre" required placeholder="Nombre" className="min-h-11 min-w-0 rounded-xl border border-borde px-3 text-sm outline-none focus:border-verde" aria-label="Nombre del dueño" />
                     <input name="telefono" type="tel" placeholder="WhatsApp" className="min-h-11 min-w-0 rounded-xl border border-borde px-3 text-sm outline-none focus:border-verde" aria-label="WhatsApp del dueño" />
                   </div>
+                  <input name="email" type="email" placeholder="Correo (para su reporte mensual)" className="min-h-11 min-w-0 rounded-xl border border-borde px-3 text-sm outline-none focus:border-verde" aria-label="Correo del dueño" />
                   <Boton className="self-start">Guardar dueño</Boton>
                 </form>
               )}

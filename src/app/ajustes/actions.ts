@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { AVISOS, correrAvisos } from "@/lib/avisos";
+import { AVISOS, correrAvisos, valido, type ConfigAvisos } from "@/lib/avisos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sesionConOrg } from "@/lib/sesion";
 import { origen } from "@/lib/util";
@@ -15,9 +15,26 @@ async function soyAdmin() {
 
 export async function guardarAvisos(f: FormData) {
   const { supabase, org } = await soyAdmin();
-  const avisos = Object.fromEntries(AVISOS.map((a) => [a.clave, f.get(a.clave) === "on"]));
+  const { data } = await supabase.from("organizaciones").select("avisos").eq("id", org.id).single();
+  const previo = (data?.avisos ?? {}) as ConfigAvisos;
+  const avisos = { ...Object.fromEntries(AVISOS.map((a) => [a.clave, f.get(a.clave) === "on"])), ...(previo.correo ? { correo: previo.correo } : {}) };
   await supabase.from("organizaciones").update({ avisos }).eq("id", org.id);
   revalidatePath("/ajustes");
+}
+
+// Correo que recibe el resumen diario y las respuestas de inquilinos y dueños. Vacío = las administradoras del equipo.
+export async function guardarCorreoAvisos(_: unknown, f: FormData): Promise<{ ok: boolean; mensaje: string }> {
+  const { supabase, org } = await soyAdmin();
+  const correo = String(f.get("correo") ?? "").trim().toLowerCase().slice(0, 160);
+  if (correo && !valido(correo)) return { ok: false, mensaje: "Ese correo no parece válido." };
+  const { data } = await supabase.from("organizaciones").select("avisos").eq("id", org.id).single();
+  const avisos: ConfigAvisos = { ...((data?.avisos ?? {}) as ConfigAvisos) };
+  if (correo) avisos.correo = correo;
+  else delete avisos.correo;
+  const { error } = await supabase.from("organizaciones").update({ avisos }).eq("id", org.id);
+  if (error) return { ok: false, mensaje: "No pudimos guardarlo." };
+  revalidatePath("/ajustes");
+  return { ok: true, mensaje: correo ? `Listo: el resumen y las respuestas llegarán a ${correo}.` : "Listo: llegarán al correo de cada administradora." };
 }
 
 export async function guardarNombre(f: FormData) {
