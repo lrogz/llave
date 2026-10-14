@@ -90,6 +90,11 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
           <p className="text-sm text-gris capitalize">{p.tipo.replace("_", " ")}</p>
           <h1 className="font-display text-4xl font-bold tracking-tight">{p.nombre}</h1>
           {(p.direccion || p.colonia) && <p className="text-sm text-gris">{[p.direccion, p.colonia].filter(Boolean).join(", ")}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href={`/propiedades/${p.id}/anuncio`} className="flex min-h-11 items-center rounded-xl border border-borde bg-white px-4 text-sm font-bold hover:border-verde">
+              {p.estado === "vacia" ? "Publicar anuncio para rentar" : "Anuncio para rentar"}
+            </Link>
+          </div>
         </header>
 
         <div className="flex flex-wrap items-start gap-5">

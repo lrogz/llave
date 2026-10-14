@@ -62,7 +62,10 @@ export async function agregarInquilino(f: FormData) {
         renta: renta ?? prop.renta_mensual ?? 0,
         dia_pago: diaPago,
       });
-      if (!e2) await supabase.from("propiedades").update({ estado: "rentada" }).eq("id", prop.id);
+      if (!e2) {
+        await supabase.from("propiedades").update({ estado: "rentada" }).eq("id", prop.id);
+        await supabase.from("propiedades").update({ anuncio_publicado: false }).eq("id", prop.id); // ya se rentó: se pausa el anuncio
+      }
     }
   }
   redirect(`/personas/inquilinos/${inq.id}`);
@@ -282,6 +285,7 @@ export async function nuevoContrato(f: FormData) {
   });
   if (error) throw new Error("No pudimos crear el contrato.");
   await supabase.from("propiedades").update({ estado: "rentada" }).eq("id", prop.id);
+  await supabase.from("propiedades").update({ anuncio_publicado: false }).eq("id", prop.id); // ya se rentó: se pausa el anuncio
   revalidatePath(`/personas/inquilinos/${inq.id}`);
   revalidatePath("/");
 }
