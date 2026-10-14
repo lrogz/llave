@@ -9,8 +9,25 @@ export const CATEGORIAS = [
   ["gas", "Gas"],
   ["cerrajeria", "Cerrajería"],
   ["electrodomesticos", "Electrodomésticos"],
+  ["carpinteria", "Carpintería"],
+  ["albanileria", "Albañilería"],
+  ["pintura", "Pintura"],
+  ["impermeabilizacion", "Impermeabilización"],
+  ["herreria", "Herrería"],
+  ["vidrios", "Vidrios y aluminio"],
+  ["cortinas", "Cortinas y persianas"],
+  ["minisplit", "Minisplit / aire"],
+  ["fumigacion", "Fumigación"],
+  ["limpieza", "Limpieza"],
+  ["jardineria", "Jardinería"],
+  ["mudanzas", "Mudanzas"],
+  ["internet", "Internet y TV"],
   ["otro", "Otro"],
 ] as const;
+
+// Las que ve el inquilino al reportar (las demás son para proveedores y servicios).
+const EN_REPORTE = new Set(["plomeria", "humedad", "electricidad", "gas", "cerrajeria", "electrodomesticos", "minisplit", "carpinteria", "otro"]);
+export const CATEGORIAS_REPORTE = CATEGORIAS.filter(([v]) => EN_REPORTE.has(v));
 
 export const DISPONIBILIDAD = [
   ["mananas", "Mañanas"],

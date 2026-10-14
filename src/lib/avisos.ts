@@ -5,15 +5,17 @@ import { correoConfigurado, enviarCorreos, plantilla, type Correo } from "./corr
 import { TIPOS_SERVICIO, etiqueta, formatoFecha, pesos } from "./datos";
 import { inicioDeMes, mesAnterior, mesTexto } from "./reporte";
 import { generarMantenimientos } from "./mantenimiento";
+import { enMX, fechaCita } from "./agenda";
 import { enviarPlantilla, telefonoValido, whatsappConfigurado, type MensajeWA } from "./whatsapp";
 
-export type TipoAviso = "renta" | "vencida" | "reporte" | "renovacion" | "servicios" | "resumen";
+export type TipoAviso = "renta" | "vencida" | "reporte" | "renovacion" | "servicios" | "citas" | "resumen";
 export const AVISOS: { clave: TipoAviso; texto: string; detalle: string }[] = [
   { clave: "renta", texto: "Aviso de renta al inquilino", detalle: "3 días antes de que venza, con su link de pago" },
   { clave: "vencida", texto: "Renta vencida", detalle: "Recordatorio al día siguiente y a la semana" },
   { clave: "reporte", texto: "Reporte mensual al dueño", detalle: "Del día 1 al 5, con rentas, trabajos y saldo" },
   { clave: "renovacion", texto: "Renovación de contrato", detalle: "Al inquilino 60 días antes de que termine" },
   { clave: "servicios", texto: "Servicios por vencer", detalle: "A quien paga (inquilino o dueño), 3 días antes" },
+  { clave: "citas", texto: "Recordatorio de visitas", detalle: "Al inquilino y al proveedor, un día antes de la visita" },
   { clave: "resumen", texto: "Resumen diario para ti", detalle: "Cada mañana, solo si hay algo pendiente" },
 ];
 
@@ -187,6 +189,53 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     }
   }
 
+  // Visitas de mañana: recordatorio al inquilino (correo y WhatsApp) y al proveedor (WhatsApp)
+  let visitasManana = 0;
+  if (activo("citas")) {
+    const desde = enMX(hoyMX(1), "00:00").toISOString();
+    const hasta = enMX(hoyMX(2), "00:00").toISOString();
+    const { data: cs } = await db
+      .from("citas")
+      .select("id, inicio, proveedor_id, proveedores(nombre, telefono), propiedades(nombre, colonia, contratos(activo, inquilinos(nombre, email, telefono))), tickets(titulo, inquilinos(nombre, email, telefono))")
+      .eq("organizacion_id", org.id)
+      .eq("estado", "confirmada")
+      .gte("inicio", desde)
+      .lt("inicio", hasta);
+    const lista = (cs ?? []) as unknown as {
+      id: string;
+      inicio: string;
+      proveedor_id: string;
+      proveedores: { nombre: string; telefono: string | null } | null;
+      propiedades: { nombre: string; colonia: string | null; contratos: { activo: boolean; inquilinos: { nombre: string; email: string | null; telefono: string | null } | null }[] } | null;
+      tickets: { titulo: string; inquilinos: { nombre: string; email: string | null; telefono: string | null } | null } | null;
+    }[];
+    visitasManana = lista.length;
+    const { data: pts } = lista.length ? await db.from("proveedor_portal").select("proveedor_id, token").in("proveedor_id", [...new Set(lista.map((x) => x.proveedor_id))]) : { data: [] };
+    const portal = new Map((pts ?? []).map((x) => [x.proveedor_id as string, x.token as string]));
+    for (const v of lista) {
+      const casa = v.propiedades?.nombre ?? "tu casa";
+      const trabajo = v.tickets?.titulo ?? "una visita";
+      const prov = v.proveedores?.nombre ?? "El proveedor";
+      const cuando = fechaCita(v.inicio);
+      const inq = v.tickets?.inquilinos ?? v.propiedades?.contratos.find((k) => k.activo)?.inquilinos;
+      if (inq)
+        agregar(`cita:${v.id}`, "citas", inq.email, () =>
+          correo(inq.email!, `Mañana: visita en ${casa}`, plantilla({
+            org: org.nombre,
+            titulo: `${primerNombre(inq.nombre)}, mañana va ${prov}`,
+            parrafos: [`${prov} irá a ${casa} el ${cuando} para atender: ${trabajo}.`, "Si ya no puedes recibirlo, responde a este correo."],
+          })), inq.telefono, () => ({ plantilla: "bk_cita", variables: [primerNombre(inq.nombre), org.nombre, prov, casa, cuando, trabajo] }));
+      const tel = v.proveedores?.telefono;
+      if (conWA && telefonoValido(tel))
+        c.push({
+          clave: `cita-prov:${v.id}`,
+          tipo: "citas",
+          wa: { telefono: tel!, plantilla: "bk_cita_proveedor", variables: [primerNombre(prov), org.nombre, trabajo, [casa, v.propiedades?.colonia].filter(Boolean).join(", "), cuando, portal.has(v.proveedor_id) ? `${base}/pro/${portal.get(v.proveedor_id)}` : base] },
+        });
+    }
+    if (lista.length) await db.from("citas").update({ recordatorio_at: new Date().toISOString() }).in("id", lista.map((x) => x.id)).is("recordatorio_at", null);
+  }
+
   // Quita los que ya se mandaron
   const claves = c.map((x) => x.clave);
   const ya = new Set<string>();
@@ -218,6 +267,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     ]
       .filter(([n]) => (n as number) > 0)
       .map(([n, t]) => `• ${n} ${t}`);
+    if (visitasManana) lineas.push(`• Mañana hay ${visitasManana} ${visitasManana === 1 ? "visita de proveedor" : "visitas de proveedores"} agendada${visitasManana === 1 ? "" : "s"}.`);
     if (mantenimientos) lineas.push(`• Creamos ${mantenimientos} ${mantenimientos === 1 ? "ticket" : "tickets"} de mantenimiento preventivo para esta semana.`);
     if (nuevos.length) lineas.push(`• Hoy mandamos ${nuevos.length} ${nuevos.length === 1 ? "aviso" : "avisos"} por ti a inquilinos y dueños.`);
     if (lineas.length) {

@@ -22,6 +22,11 @@ import {
   origen,
   pesos,
 } from "@/lib/util";
+import { AgendarCita } from "@/components/AgendarCita";
+import { BotonCopiar } from "@/components/BotonCopiar";
+import { fechaCita, horarioValido, horariosLibres } from "@/lib/agenda";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { cancelarCita } from "@/app/citas/actions";
 import { aprobarYo, cancelarTicket, enviarAlDueno, invitarProveedor, marcarResuelto, subirCotizacion } from "../actions";
 
 export const metadata: Metadata = { title: "Ticket · Black Key" };
@@ -42,6 +47,7 @@ type Cotizacion = {
   created_at: string;
   proveedores: Proveedor | null;
 };
+type CitaTicket = { id: string; proveedor_id: string; inicio: string | null; fin: string | null; estado: string; token: string; llegada_at: string | null; salida_at: string | null; proveedores: { nombre: string; telefono: string | null; es_red: boolean } | null };
 type Solicitud = { id: string; estado: string; token: string; enviada_at: string; vista_at: string | null; proveedores: Proveedor | null };
 type Aprobacion = { id: string; token: string; decision: string | null; comentario: string | null; decidida_at: string | null; cotizacion_id: string; created_at: string };
 type Ticket = {
@@ -69,16 +75,19 @@ type Ticket = {
   inquilinos: { nombre: string; telefono: string | null } | null;
 };
 
-export default function DetalleTicket({ params }: { params: Promise<{ id: string }> }) {
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ prov?: string }> };
+
+export default function DetalleTicket(props: Props) {
   return (
     <Suspense fallback={<Cargando />}>
-      <Contenido params={params} />
+      <Contenido {...props} />
     </Suspense>
   );
 }
 
-async function Contenido({ params }: { params: Promise<{ id: string }> }) {
+async function Contenido({ params, searchParams }: Props) {
   const { id } = await params;
+  const { prov: provElegido } = await searchParams;
   const { supabase, org } = await sesion();
   if (!org) redirect("/");
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -93,7 +102,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   if (!t) notFound();
   const ticket = t as unknown as Ticket;
 
-  const [{ data: media }, { data: sol }, { data: cot }, { data: provs }] = await Promise.all([
+  const [{ data: media }, { data: sol }, { data: cot }, { data: provs }, { data: redData }, { data: citasData }] = await Promise.all([
     supabase.from("ticket_media").select("id, tipo, storage_path, momento").eq("ticket_id", id).order("created_at"),
     supabase
       .from("solicitudes_cotizacion")
@@ -106,6 +115,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
       .eq("ticket_id", id)
       .order("created_at"),
     supabase.from("proveedores").select("id, nombre, especialidades, calificacion").eq("organizacion_id", org.id).order("nombre"),
+    supabase.from("proveedores").select("id, nombre, especialidades, calificacion").eq("es_red", true).order("calificacion", { ascending: false, nullsFirst: false }).limit(40),
+    supabase.from("citas").select("id, proveedor_id, inicio, fin, estado, token, llegada_at, salida_at, proveedores(nombre, telefono, es_red)").eq("ticket_id", id).neq("estado", "cancelada").order("created_at"),
   ]);
   const solicitudes = (sol ?? []) as unknown as Solicitud[];
   const cotizaciones = (cot ?? []) as unknown as Cotizacion[];
@@ -113,6 +124,13 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
   const misProveedores = ((provs ?? []) as { id: string; nombre: string; especialidades: string[]; calificacion: number | null }[])
     .map((p) => ({ ...p, afin: !!ticket.categoria && p.especialidades.includes(ticket.categoria) }))
     .sort((a, b) => Number(b.afin) - Number(a.afin) || (b.calificacion ?? 0) - (a.calificacion ?? 0) || a.nombre.localeCompare(b.nombre));
+  const deLaRed = ((redData ?? []) as { id: string; nombre: string; especialidades: string[]; calificacion: number | null }[])
+    .filter((p) => !ticket.categoria || p.especialidades.includes(ticket.categoria))
+    .map((p) => ({ ...p, afin: true }));
+  const citas = (citasData ?? []) as unknown as CitaTicket[];
+  // Solo los links de tus propios proveedores (los de la red son privados de cada proveedor).
+  const { data: pts } = citas.length ? await supabase.from("proveedor_portal").select("proveedor_id, token").in("proveedor_id", [...new Set(citas.map((c) => c.proveedor_id))]) : { data: [] };
+  const portales = new Map((pts ?? []).map((x) => [x.proveedor_id as string, x.token as string]));
 
   const { data: aps } = cotizaciones.length
     ? await supabase
@@ -145,6 +163,11 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
 
   const elegida = cotizaciones.find((c) => c.estado === "aprobada") ?? cotizaciones.find((c) => c.estado === "enviada_aprobacion");
   const aprobacionVigente = elegida ? aprobaciones.find((a) => a.cotizacion_id === elegida.id) : undefined;
+
+  // Visita: con el proveedor elegido o con los que cotizaron / fueron invitados.
+  const candidatos = [...new Map([elegida?.proveedores, ...cotizaciones.map((c) => c.proveedores), ...solicitudes.map((x) => x.proveedores)].filter((p): p is Proveedor => !!p).map((p) => [p.id, p])).values()];
+  const provCita = candidatos.find((p) => p.id === provElegido) ?? candidatos[0];
+  const agenda = provCita && abierto ? await agendaDe(provCita.id) : null;
 
   return (
     <div className="flex flex-1 flex-wrap bg-fondo">
@@ -248,7 +271,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                   </summary>
                   <form action={invitarProveedor} className="flex flex-col gap-3 px-4 pb-4">
                     <input type="hidden" name="ticket_id" value={ticket.id} />
-                    <SelectorProveedor proveedores={misProveedores} />
+                    <SelectorProveedor proveedores={misProveedores} red={deLaRed} />
                     <Boton enviando="Creando link…">Crear link de cotización</Boton>
                     <p className="text-xs text-gris">Recibe fotos y video; responde sin cuenta ni app.</p>
                   </form>
@@ -261,7 +284,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                   </summary>
                   <form action={subirCotizacion} className="flex flex-col gap-3 px-4 pb-4">
                     <input type="hidden" name="ticket_id" value={ticket.id} />
-                    <SelectorProveedor proveedores={misProveedores} />
+                    <SelectorProveedor proveedores={misProveedores} red={deLaRed} />
                     <div className="grid grid-cols-2 gap-2">
                       <Campo nombre="monto" etiqueta="Monto (MXN)" placeholder="$1,450" />
                       <Campo nombre="garantia_dias" etiqueta="Garantía (días)" placeholder="30" />
@@ -469,6 +492,34 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               </p>
             )}
 
+            {(provCita && abierto) || citas.length ? (
+              <section aria-label="Visita del proveedor" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
+                <h2 className="font-bold">Visita del proveedor</h2>
+                {citas.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {citas.map((c) => (
+                      <FilaCita key={c.id} c={c} base={base} ticket={ticket} portal={portales.get(c.proveedor_id)} />
+                    ))}
+                  </ul>
+                )}
+                {provCita && abierto && agenda && (
+                  <>
+                    {candidatos.length > 1 && (
+                      <nav aria-label="Proveedor de la visita" className="flex flex-wrap gap-1.5">
+                        {candidatos.map((p) => (
+                          <Link key={p.id} href={`/tickets/${ticket.id}?prov=${p.id}`} scroll={false} aria-current={p.id === provCita.id ? "true" : undefined} className={`flex min-h-9 items-center rounded-full px-3 text-xs font-bold ${p.id === provCita.id ? "bg-tinta text-white" : "border border-borde"}`}>
+                            {p.nombre}
+                          </Link>
+                        ))}
+                      </nav>
+                    )}
+                    {!agenda.conHorario && <p className="text-sm text-gris">{provCita.nombre} aún no pone su horario{provCita.es_red ? "" : "; pásale su link de agenda (botón de WhatsApp en la cita) para que lo ponga"}. Mientras, agenda una fecha que ya acordaron.</p>}
+                    <AgendarCita key={provCita.id} ticketId={ticket.id} proveedorId={provCita.id} espacios={agenda.espacios} conHorario={agenda.conHorario} />
+                  </>
+                )}
+              </section>
+            ) : null}
+
             {abierto && (
               <form action={cancelarTicket} className="self-end">
                 <input type="hidden" name="ticket_id" value={ticket.id} />
@@ -550,10 +601,11 @@ function Tiempos({ ticket, solicitudes, cotizaciones, aprobaciones }: { ticket: 
   );
 }
 
-function SelectorProveedor({ proveedores }: { proveedores: { id: string; nombre: string; afin: boolean; calificacion: number | null }[] }) {
+type Opcion = { id: string; nombre: string; afin: boolean; calificacion: number | null };
+function SelectorProveedor({ proveedores, red = [] }: { proveedores: Opcion[]; red?: Opcion[] }) {
   return (
     <>
-      {proveedores.length > 0 && (
+      {proveedores.length + red.length > 0 && (
         <label className="flex flex-col gap-1 text-sm font-semibold">
           Proveedor
           <select name="proveedor_id" defaultValue="nuevo" className="min-h-11 rounded-xl border border-borde bg-white px-3 font-normal">
@@ -565,6 +617,16 @@ function SelectorProveedor({ proveedores }: { proveedores: { id: string; nombre:
                 {p.calificacion != null ? ` · ${Number(p.calificacion).toFixed(1)}` : ""}
               </option>
             ))}
+            {red.length > 0 && (
+              <optgroup label="Red Black Key (verificados)">
+                {red.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    ✓ {p.nombre}
+                    {p.calificacion != null ? ` · ${Number(p.calificacion).toFixed(1)}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
       )}
@@ -587,5 +649,63 @@ function Campo({ nombre, etiqueta: texto, placeholder, tipo = "text" }: { nombre
         className="min-h-11 min-w-0 rounded-xl border border-borde px-3 font-normal outline-none focus:border-verde"
       />
     </label>
+  );
+}
+
+const horaCorta = new Intl.DateTimeFormat("es-MX", { hour: "numeric", minute: "2-digit", timeZone: "America/Mexico_City" });
+const diaLargo = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Mexico_City" });
+
+// Horarios libres del proveedor (con las citas de todas sus administradoras: por eso con el cliente admin).
+async function agendaDe(proveedorId: string) {
+  const admin = createAdminClient();
+  const { data } = await admin.from("proveedores").select("horario").eq("id", proveedorId).maybeSingle();
+  if (!horarioValido(data?.horario)) return { conHorario: false, espacios: [] };
+  const libres = await horariosLibres(admin, proveedorId, data.horario, 8);
+  return {
+    conHorario: true,
+    espacios: libres.slice(0, 60).map((e) => ({ valor: `${e.inicio}|${e.fin}`, dia: diaLargo.format(new Date(e.inicio)), hora: horaCorta.format(new Date(e.inicio)) })),
+  };
+}
+
+function FilaCita({ c, base, ticket, portal }: { c: CitaTicket; base: string; ticket: Ticket; portal?: string }) {
+  const p = c.proveedores;
+  const inq = ticket.inquilinos;
+  const casa = [ticket.propiedades?.nombre, ticket.propiedades?.direccion, ticket.propiedades?.colonia].filter(Boolean).join(", ");
+  const link = `${base}/agenda/${c.token}`;
+  const estado =
+    c.estado === "por_elegir" ? "Esperando que el inquilino elija" : c.estado === "hecha" || c.salida_at ? "✓ Terminada" : c.llegada_at ? "El proveedor ya llegó" : "Confirmada";
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border border-borde-suave p-3 text-sm">
+      <span className="font-bold first-letter:uppercase">{c.inicio ? fechaCita(c.inicio) : "Sin fecha todavía"}</span>
+      <span className="text-gris">
+        {p?.nombre} · {estado}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {c.estado === "por_elegir" && inq?.telefono && (
+          <a href={linkWhatsApp(inq.telefono, `Hola ${inq.nombre.split(" ")[0]}, para atender "${ticket.titulo}" elige aquí el horario en que puedes recibir al proveedor: ${link}`)} target="_blank" rel="noreferrer" className="flex min-h-10 items-center rounded-xl bg-verde px-3 text-xs font-bold text-white">
+            Mandar link al inquilino
+          </a>
+        )}
+        {c.estado === "por_elegir" && <BotonCopiar texto={link} etiqueta="Copiar link" className="min-h-10 text-xs" />}
+        {c.estado === "confirmada" && c.inicio && inq?.telefono && (
+          <a href={linkWhatsApp(inq.telefono, `Hola ${inq.nombre.split(" ")[0]}, ${p?.nombre ?? "el proveedor"} irá a ${ticket.propiedades?.nombre ?? "tu casa"} el ${fechaCita(c.inicio)} para atender "${ticket.titulo}". Detalles: ${link}`)} target="_blank" rel="noreferrer" className="flex min-h-10 items-center rounded-xl border border-borde px-3 text-xs font-bold">
+            Avisar al inquilino
+          </a>
+        )}
+        {c.estado === "confirmada" && c.inicio && p?.telefono && (
+          <a href={linkWhatsApp(p.telefono, `Hola ${p.nombre.split(" ")[0]}, queda agendada la visita para "${ticket.titulo}" en ${casa} el ${fechaCita(c.inicio)}.${portal ? ` Tu agenda: ${base}/pro/${portal}` : ""}`)} target="_blank" rel="noreferrer" className="flex min-h-10 items-center rounded-xl border border-borde px-3 text-xs font-bold">
+            Avisar al proveedor
+          </a>
+        )}
+        {(c.estado === "confirmada" || c.estado === "por_elegir") && (
+          <form action={cancelarCita}>
+            <input type="hidden" name="cita_id" value={c.id} />
+            <Boton estilo="peligro" enviando="…" className="min-h-10 text-xs">
+              Cancelar visita
+            </Boton>
+          </form>
+        )}
+      </div>
+    </li>
   );
 }

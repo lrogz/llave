@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PieLegal } from "@/components/PieLegal";
 import {
   BUCKET,
-  CATEGORIAS,
+  CATEGORIAS_REPORTE,
   DISPONIBILIDAD,
   MAX_ARCHIVO_REPORTE,
   MAX_ARCHIVOS_REPORTE,
@@ -109,7 +109,7 @@ export function ReporteForm({ codigo }: { codigo: string }) {
       <fieldset className="flex flex-col gap-2">
         <legend className="sr-only">Tipo de problema</legend>
         <div className="flex flex-wrap gap-2">
-          {CATEGORIAS.map(([valor, texto]) => (
+          {CATEGORIAS_REPORTE.map(([valor, texto]) => (
             <button
               key={valor}
               type="button"

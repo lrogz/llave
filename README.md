@@ -65,6 +65,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    13. `supabase/migrations/20261014120000_entregas_mantenimiento.sql`
    14. `supabase/migrations/20261014130000_cobro_contratos_solicitudes.sql`
    15. `supabase/migrations/20261014140000_facturacion.sql`
+   16. `supabase/migrations/20261014150000_red_agenda.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -151,6 +152,8 @@ Un número de WhatsApp Business para Black Key: manda los avisos (renta, vencida
    | `bk_renta_vencida` | Hola {{1}}, te escribimos de {{2}}. La renta de {{3}} por {{4}} venció el {{5}}. Si ya pagaste, sube tu comprobante aquí: {{6}} ¡Gracias! |
    | `bk_reporte_dueno` | Hola {{1}}, te escribimos de {{2}}. Ya está tu reporte de {{3}}: rentas, trabajos con fotos y tu saldo. Puedes verlo aquí: {{4}} Saludos. |
    | `bk_renovacion` | Hola {{1}}, te escribimos de {{2}}. Tu contrato de {{3}} termina el {{4}}. ¿Te gustaría renovar? Responde este mensaje y te compartimos las condiciones. |
+   | `bk_cita` | Hola {{1}}, te escribimos de {{2}}. {{3}} irá a {{4}} el {{5}} para atender: {{6}}. Si no puedes recibirlo, responde este mensaje. |
+   | `bk_cita_proveedor` | Hola {{1}}, tienes una visita de {{2}}: {{3}} en {{4}}, el {{5}}. Detalles, cómo llegar y botón de Llegué/Terminé: {{6}} |
    | `bk_servicio` | Hola {{1}}, te escribimos de {{2}}. El recibo de {{3}} de {{4}} vence el {{5}}. Te lo recordamos para que no se generen recargos. |
 
 7. En Vercel agrega `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_APP_SECRET` y `WHATSAPP_VERIFY_TOKEN` (un texto que tú inventes) y Redeploy.
@@ -171,6 +174,14 @@ Cada **dueño** factura su renta con su propio sello digital (CSD); Black Key cr
 6. En la propiedad, la **cuenta predial** (va en la factura).
 
 Reglas que aplica (valídalas con tu contador): clave 80131500 / unidad E48; casa habitación sin amueblar = IVA exento; local, oficina o amueblada = IVA 16%; si paga una persona moral, retención de ISR 10% (1.25% si el dueño está en RESICO) y 2/3 del IVA. Facturapi cobra por factura timbrada según su plan.
+
+### 9. Red de proveedores y agenda en línea
+
+- Los proveedores se registran solos en `/red/unirme` (pásales ese link). Quedan "en revisión" y reciben su link personal `/pro/…`: ahí ponen su horario, suben INE, comprobante de domicilio y fotos, y ven sus citas con botones Llegué / Terminé.
+- En Vercel agrega `PLATAFORMA_ADMINS` = tus correos separados por coma. Esas cuentas entran a `/red/admin` para aprobar o rechazar (y reciben un correo por cada solicitud).
+- Los aprobados aparecen en Proveedores › "Ver toda la red" (filtros por especialidad y zona) y en el selector de cada ticket.
+- En el ticket, "Visita del proveedor": agenda en un horario libre del proveedor (nunca dos visitas a la misma hora, aunque sean de otras administradoras) o manda al inquilino un link `/agenda/…` para que él elija. El inquilino puede guardarla en su calendario.
+- Un día antes sale recordatorio al inquilino (correo y WhatsApp) y al proveedor (WhatsApp). Se apaga en Ajustes › "Recordatorio de visitas".
 
 ## Seguridad
 

@@ -15,6 +15,8 @@ export const PLANTILLAS = {
   bk_renta_vencida: "Hola {{1}}, te escribimos de {{2}}. La renta de {{3}} por {{4}} venció el {{5}}. Si ya pagaste, sube tu comprobante aquí: {{6}} ¡Gracias!",
   bk_reporte_dueno: "Hola {{1}}, te escribimos de {{2}}. Ya está tu reporte de {{3}}: rentas, trabajos con fotos y tu saldo. Puedes verlo aquí: {{4}} Saludos.",
   bk_renovacion: "Hola {{1}}, te escribimos de {{2}}. Tu contrato de {{3}} termina el {{4}}. ¿Te gustaría renovar? Responde este mensaje y te compartimos las condiciones.",
+  bk_cita: "Hola {{1}}, te escribimos de {{2}}. {{3}} irá a {{4}} el {{5}} para atender: {{6}}. Si no puedes recibirlo, responde este mensaje.",
+  bk_cita_proveedor: "Hola {{1}}, tienes una visita de {{2}}: {{3}} en {{4}}, el {{5}}. Detalles, cómo llegar y botón de Llegué/Terminé: {{6}}",
   bk_servicio: "Hola {{1}}, te escribimos de {{2}}. El recibo de {{3}} de {{4}} vence el {{5}}. Te lo recordamos para que no se generen recargos.",
 } as const;
 export type NombrePlantilla = keyof typeof PLANTILLAS;

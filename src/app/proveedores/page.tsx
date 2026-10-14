@@ -79,17 +79,21 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ esp?: strin
                 </ul>
               )}
             </section>
-            {red.length > 0 && (
-              <section aria-label="Red Black Key" className="overflow-hidden rounded-2xl bg-white">
-                <h2 className="px-5 pt-5 font-bold">Red Black Key</h2>
+            <section aria-label="Red Black Key" className="overflow-hidden rounded-2xl bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
+                  <h2 className="font-bold">Red Black Key</h2>
+                  <Link href={`/proveedores/red${filtro ? `?esp=${filtro}` : ""}`} className="text-sm font-bold text-verde-oscuro hover:underline">
+                    Ver toda la red →
+                  </Link>
+                </div>
                 <p className="px-5 text-sm text-gris">Proveedores verificados por si no tienes uno de confianza.</p>
                 <ul className="mt-2 divide-y divide-borde-suave">
-                  {red.map((p) => (
+                  {red.slice(0, 5).map((p) => (
                     <Fila key={p.id} p={p} />
                   ))}
+                  {red.length === 0 && <li className="px-5 pb-5 text-sm text-gris">Aún no hay de esta especialidad.</li>}
                 </ul>
               </section>
-            )}
           </div>
 
           <form action={agregarProveedor} className="flex flex-[1_1_280px] flex-col gap-3 rounded-2xl border-2 border-dashed border-borde bg-white p-5">
