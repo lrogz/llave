@@ -31,6 +31,8 @@ export type Trabajo = {
   despues: Foto[];
 };
 export type Cobro = { propiedad: string; inquilino: string | null; monto: number; estado: string; vence: string; pagado_at: string | null };
+export type Movimiento = { id: string; tipo: "cargo" | "abono"; concepto: string; monto: number; propiedad: string | null };
+export type Liquidacion = { total: number; pagada_el: string; referencia: string | null; comprobante_path: string | null };
 export type Reporte = {
   dueno: { id: string; nombre: string; comision_pct: number | null };
   periodo: string;
@@ -39,7 +41,9 @@ export type Reporte = {
   resueltos: Trabajo[];
   enCurso: Trabajo[];
   aprobacionesPendientes: { token: string; titulo: string; monto: number | null }[];
-  totales: { rentaEsperada: number; rentaCobrada: number; comision: number; gastos: number; saldo: number };
+  movimientos: Movimiento[];
+  liquidacion: Liquidacion | null;
+  totales: { rentaEsperada: number; rentaCobrada: number; comision: number; gastos: number; cargos: number; abonos: number; saldo: number };
 };
 
 type TicketFila = {
@@ -73,7 +77,7 @@ export async function armarReporte(db: SupabaseClient, duenoId: string, periodo:
       resueltos: [],
       enCurso: [],
       aprobacionesPendientes: [],
-      totales: { rentaEsperada: 0, rentaCobrada: 0, comision: 0, gastos: 0, saldo: 0 },
+      ...(await ajustes(db, duenoId, periodo, new Map(), { rentaEsperada: 0, rentaCobrada: 0, comision: 0, gastos: 0 })),
     };
   }
 
@@ -153,6 +157,39 @@ export async function armarReporte(db: SupabaseClient, duenoId: string, periodo:
       titulo: a.cotizaciones?.tickets?.titulo ?? "Cotización",
       monto: a.cotizaciones?.monto ?? null,
     })),
-    totales: { rentaEsperada, rentaCobrada, comision, gastos, saldo: rentaCobrada - comision - gastos },
+    ...(await ajustes(db, duenoId, periodo, nombre, { rentaEsperada, rentaCobrada, comision, gastos })),
   };
 }
+
+// Cargos y abonos manuales del mes, y la liquidación si ya se transfirió.
+async function ajustes(
+  db: SupabaseClient,
+  duenoId: string,
+  periodo: string,
+  nombre: Map<string, string>,
+  base: { rentaEsperada: number; rentaCobrada: number; comision: number; gastos: number },
+) {
+  const [movQ, liqQ] = await Promise.all([
+    db.from("movimientos_dueno").select("id, tipo, concepto, monto, propiedad_id").eq("dueno_id", duenoId).eq("periodo", periodo).order("created_at"),
+    db.from("liquidaciones").select("total, pagada_el, referencia, comprobante_path").eq("dueno_id", duenoId).eq("periodo", periodo).maybeSingle(),
+  ]);
+  // Si la base aún no tiene las tablas de liquidación, el reporte sigue funcionando sin ellas.
+  const movimientos: Movimiento[] = ((movQ.error ? [] : movQ.data) ?? []).map((m) => ({
+    id: m.id,
+    tipo: m.tipo,
+    concepto: m.concepto,
+    monto: Number(m.monto),
+    propiedad: m.propiedad_id ? (nombre.get(m.propiedad_id) ?? null) : null,
+  }));
+  const cargos = movimientos.filter((m) => m.tipo === "cargo").reduce((s, m) => s + m.monto, 0);
+  const abonos = movimientos.filter((m) => m.tipo === "abono").reduce((s, m) => s + m.monto, 0);
+  const l = liqQ.error ? null : liqQ.data;
+  return {
+    movimientos,
+    liquidacion: l ? { total: Number(l.total), pagada_el: l.pagada_el, referencia: l.referencia, comprobante_path: l.comprobante_path } : null,
+    totales: { ...base, cargos, abonos, saldo: Math.round((base.rentaCobrada - base.comision - base.gastos - cargos + abonos) * 100) / 100 },
+  };
+}
+
+// Mes que normalmente se liquida: los primeros 10 días del mes, el anterior; después, el actual.
+export const periodoALiquidar = (hoy: string) => (Number(hoy.slice(8, 10)) <= 10 ? mesAnterior(inicioDeMes(hoy)) : inicioDeMes(hoy));

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { salir } from "@/app/actions";
 import { Logo } from "./Logo";
 
-type Seccion = "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Proveedores" | "Documentos" | "Equipo" | "Ajustes" | "Plan";
+type Seccion = "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Liquidaciones" | "Proveedores" | "Documentos" | "Equipo" | "Ajustes" | "Plan";
 
 const ITEMS: { texto: Seccion | "Bandeja"; href: string | null; corto?: string }[] = [
   { texto: "Hoy", href: "/hoy" },
@@ -12,6 +12,7 @@ const ITEMS: { texto: Seccion | "Bandeja"; href: string | null; corto?: string }
   { texto: "Bandeja", href: null },
   { texto: "Proveedores", href: "/proveedores" },
   { texto: "Pagos", href: "/pagos" },
+  { texto: "Liquidaciones", href: "/liquidaciones" },
   { texto: "Documentos", href: "/documentos" },
   { texto: "Equipo", href: "/equipo" },
   { texto: "Ajustes", href: "/ajustes" },

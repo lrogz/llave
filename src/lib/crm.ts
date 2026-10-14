@@ -76,6 +76,8 @@ export const plantillas = {
     `Hola ${primerNombre(dueno)}, sigue pendiente tu aprobación para "${ticket}". Aquí puedes ver la cotización y aprobar con un clic: ${link}`,
   reporte: (dueno: string, mes: string, link: string) =>
     `Hola ${primerNombre(dueno)}, aquí está el reporte de ${mes} de tus propiedades: rentas, trabajos con fotos y tu saldo. ${link}`,
+  liquidacion: (dueno: string, mes: string, monto: string, link: string) =>
+    `Hola ${primerNombre(dueno)}, te transferimos ${monto} de la liquidación de ${mes}. Aquí ves el detalle (rentas, comisión, gastos y trabajos con fotos): ${link}`,
   saludoDueno: (dueno: string) => `Hola ${primerNombre(dueno)}, te escribo de la administración sobre tus propiedades.`,
   saludoInquilino: (inquilino: string) => `Hola ${primerNombre(inquilino)}, te escribo de la administración.`,
 };

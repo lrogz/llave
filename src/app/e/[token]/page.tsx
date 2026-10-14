@@ -67,10 +67,32 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
 
       <section aria-label="Resumen del mes" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Cifra titulo="Renta cobrada" valor={pesos.format(t.rentaCobrada)} nota={t.rentaEsperada > t.rentaCobrada ? `de ${pesos.format(t.rentaEsperada)}` : undefined} />
-        <Cifra titulo="Mantenimiento" valor={t.gastos ? `−${pesos.format(t.gastos)}` : pesos.format(0)} />
+        <Cifra titulo={t.cargos ? "Mantenimiento y cargos" : "Mantenimiento"} valor={t.gastos + t.cargos ? `−${pesos.format(t.gastos + t.cargos)}` : pesos.format(0)} />
         <Cifra titulo={`Comisión${rep.dueno.comision_pct ? ` (${Number(rep.dueno.comision_pct)}%)` : ""}`} valor={t.comision ? `−${pesos.format(t.comision)}` : pesos.format(0)} />
         <Cifra titulo={t.saldo < 0 ? "Saldo a cubrir" : "Para ti"} valor={t.saldo < 0 ? `−${pesos.format(-t.saldo)}` : pesos.format(t.saldo)} fuerte />
       </section>
+
+      {(rep.liquidacion || rep.movimientos.length > 0) && (
+        <section aria-label="Tu liquidación" className="flex flex-col gap-1 rounded-2xl bg-white p-5 text-sm">
+          <h2 className="mb-1 font-bold">Tu liquidación</h2>
+          {rep.liquidacion && (
+            <p className="mb-2 rounded-xl bg-verde-claro p-3 text-verde-oscuro">
+              ✓ Te transferimos {pesos.format(rep.liquidacion.total)} el {formatoFecha(rep.liquidacion.pagada_el)}
+              {rep.liquidacion.referencia ? ` (ref. ${rep.liquidacion.referencia})` : ""}.
+            </p>
+          )}
+          <Renglon texto="Renta cobrada" valor={t.rentaCobrada} />
+          <Renglon texto="Comisión de administración" valor={-t.comision} />
+          <Renglon texto="Mantenimiento" valor={-t.gastos} />
+          {rep.movimientos.map((m) => (
+            <Renglon key={m.id} texto={`${m.concepto}${m.propiedad ? ` · ${m.propiedad}` : ""}`} valor={m.tipo === "cargo" ? -m.monto : m.monto} />
+          ))}
+          <div className="mt-1 flex justify-between border-t border-borde pt-2 font-bold">
+            <span>{t.saldo < 0 ? "Saldo a cubrir" : "Total para ti"}</span>
+            <span className="font-mono">{pesos.format(Math.abs(rep.liquidacion?.total ?? t.saldo))}</span>
+          </div>
+        </section>
+      )}
 
       {rep.aprobacionesPendientes.length > 0 && (
         <section aria-label="Necesitamos tu aprobación" className="flex flex-col gap-2 rounded-2xl bg-[#FFF4E0] p-5">
@@ -210,4 +232,13 @@ function TrabajoCard({ t, url }: { t: Trabajo; url: Map<string | null, string | 
 
 function Invalido() {
   return <p className="rounded-2xl bg-white p-6 text-sm">Este link ya no es válido. Pídele a tu administradora uno nuevo.</p>;
+}
+
+function Renglon({ texto, valor }: { texto: string; valor: number }) {
+  return (
+    <div className="flex justify-between gap-3 py-0.5">
+      <span className={valor < 0 ? "text-gris" : ""}>{texto}</span>
+      <span className="font-mono">{valor < 0 ? `−${pesos.format(-valor)}` : pesos.format(valor)}</span>
+    </div>
+  );
 }
