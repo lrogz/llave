@@ -198,13 +198,14 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
 
   // Resumen para la administradora (solo si hay algo)
   if (activo("resumen") && conCorreo && responsables.length) {
-    const [venc, compr, aprob, parados, porVencer, serv] = await Promise.all([
+    const [venc, compr, aprob, parados, porVencer, serv, polizas] = await Promise.all([
       db.from("cobros_renta").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).eq("estado", "vencido"),
       db.from("cobros_renta").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).eq("estado", "por_confirmar"),
       db.from("aprobaciones").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).is("decision", null).lt("created_at", new Date(Date.now() - 48 * 3600_000).toISOString()),
       db.from("tickets").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).not("estado", "in", "(resuelto,cancelado)").lt("updated_at", new Date(Date.now() - 72 * 3600_000).toISOString()),
       db.from("contratos").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).eq("activo", true).lte("fin", hoyMX(30)),
       db.from("recibos_servicio").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).in("estado", ["pendiente", "vencido"]).lte("vence", hoyMX(3)),
+      db.from("contratos").select("id", { count: "exact", head: true }).eq("organizacion_id", org.id).eq("activo", true).gte("poliza_vence", hoy).lte("poliza_vence", hoyMX(30)),
     ]);
     const lineas = [
       [venc.count, "rentas atrasadas"],
@@ -213,6 +214,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
       [parados.count, "tickets sin movimiento en 3 días"],
       [porVencer.count, "contratos que terminan en 30 días"],
       [serv.count, "servicios vencidos o por vencer"],
+      [polizas.error ? 0 : polizas.count, "pólizas jurídicas que vencen en 30 días"],
     ]
       .filter(([n]) => (n as number) > 0)
       .map(([n, t]) => `• ${n} ${t}`);

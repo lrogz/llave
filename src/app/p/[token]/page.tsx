@@ -28,6 +28,7 @@ type Datos = {
   estado: string;
   pagado_at: string | null;
   nota: string | null;
+  contrato_id: string;
   organizaciones: { nombre: string; datos_pago: string | null } | null;
   contratos: { propiedades: { nombre: string } | null; inquilinos: { nombre: string } | null } | null;
 };
@@ -39,12 +40,15 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
   const admin = createAdminClient();
   const { data } = await admin
     .from("cobros_renta")
-    .select("periodo, monto, recargo, vence, estado, pagado_at, nota, organizaciones(nombre, datos_pago), contratos(propiedades(nombre), inquilinos(nombre))")
+    .select("periodo, monto, recargo, vence, estado, pagado_at, nota, contrato_id, organizaciones(nombre, datos_pago), contratos(propiedades(nombre), inquilinos(nombre))")
     .eq("token", token)
     .maybeSingle();
   const c = data as unknown as Datos | null;
   if (!c) return <Invalido />;
   const total = Number(c.monto) + Number(c.recargo ?? 0);
+  // Referencia numérica para la transferencia (si la base ya la tiene).
+  const { data: ref } = await admin.from("contratos").select("referencia").eq("id", c.contrato_id).maybeSingle();
+  const referencia = (ref as { referencia?: string | null } | null)?.referencia ?? null;
   const nombre = c.contratos?.inquilinos?.nombre?.split(" ")[0];
 
   return (
@@ -81,6 +85,12 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
             <section className="flex flex-col gap-2 rounded-2xl bg-white p-5">
               <h2 className="font-bold">Datos para depositar</h2>
               <p className="whitespace-pre-line font-mono text-sm">{c.organizaciones.datos_pago}</p>
+              {referencia && (
+                <div className="mt-1 rounded-xl bg-verde-claro p-3 text-verde-oscuro">
+                  <p className="text-sm">Escribe esta referencia numérica en tu transferencia para que tu pago se registre solo:</p>
+                  <p className="font-mono text-2xl font-bold tracking-widest" aria-label="Referencia numérica">{referencia}</p>
+                </div>
+              )}
             </section>
           )}
           <section className="flex flex-col gap-3">

@@ -11,6 +11,7 @@ import { sesionConOrg } from "@/lib/sesion";
 import { SeccionDocumentos } from "@/components/Documentos";
 import { origen } from "@/lib/util";
 import { editarContrato, guardarDatosInquilino, nuevoContrato, renovarContrato, terminarContrato } from "../../actions";
+import { guardarPoliza, prepararContrato } from "@/app/contratos/actions";
 
 export const metadata: Metadata = { title: "Inquilino · Black Key" };
 
@@ -222,6 +223,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               ) : (
                 <p className="text-gris">Sin contrato activo.</p>
               )}
+              {activo && <ExtrasContrato db={supabase} contratoId={activo.id} avalNombre={inq.aval_nombre} />}
               {activo ? (
                 <div className="mt-2 flex flex-col gap-2 border-t border-borde-suave pt-3">
                   <details>
@@ -390,4 +392,80 @@ function unAnoDespues(fecha: string) {
   const [y, m, d] = fecha.split("-").map(Number);
   const dd = m === 2 && d === 29 ? 28 : d;
   return `${y + 1}-${String(m).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+// Referencia de pago, póliza jurídica y contrato para firma electrónica (si la base ya tiene esas columnas).
+async function ExtrasContrato({ db, contratoId, avalNombre }: { db: Awaited<ReturnType<typeof sesionConOrg>>["supabase"]; contratoId: string; avalNombre: string | null }) {
+  const [{ data: c, error }, { data: docs }] = await Promise.all([
+    db.from("contratos").select("referencia, poliza_proveedor, poliza_numero, poliza_vence, poliza_costo").eq("id", contratoId).maybeSingle(),
+    db.from("documentos_contrato").select("id, estado, created_at").eq("contrato_id", contratoId).order("created_at", { ascending: false }),
+  ]);
+  if (error || !c) return null;
+  const k = c as { referencia: string | null; poliza_proveedor: string | null; poliza_numero: string | null; poliza_vence: string | null; poliza_costo: number | null };
+  const venceProx = k.poliza_vence && k.poliza_vence <= hoyMX(30);
+  return (
+    <div className="mt-2 flex flex-col gap-3 border-t border-borde-suave pt-3">
+      {k.referencia && (
+        <p>
+          <span className="text-gris">Referencia de pago (SPEI): </span>
+          <span className="font-mono font-bold tracking-wider">{k.referencia}</span>
+        </p>
+      )}
+      <div className="flex flex-col gap-1">
+        <p>
+          <span className="text-gris">Póliza jurídica: </span>
+          {k.poliza_proveedor ? (
+            <>
+              <strong>{k.poliza_proveedor}</strong>
+              {k.poliza_numero ? ` · ${k.poliza_numero}` : ""}
+              {k.poliza_vence ? <span className={venceProx ? "font-bold text-naranja-oscuro" : ""}> · vence {fechaConAnio(k.poliza_vence)}</span> : ""}
+            </>
+          ) : (
+            "sin póliza"
+          )}
+        </p>
+        <details>
+          <summary className="cursor-pointer font-semibold text-verde">{k.poliza_proveedor ? "Editar póliza" : "Registrar póliza (Morada Uno u otra)"}</summary>
+          <form action={guardarPoliza} className="mt-2 grid grid-cols-2 gap-2">
+            <input type="hidden" name="contrato_id" value={contratoId} />
+            <Etiqueta texto="Proveedor">
+              <input name="poliza_proveedor" list="aseguradoras" defaultValue={k.poliza_proveedor ?? ""} placeholder="Morada Uno" className={campo} />
+            </Etiqueta>
+            <datalist id="aseguradoras">
+              <option value="Morada Uno" />
+              <option value="Póliza jurídica (abogado)" />
+              <option value="Homie" />
+            </datalist>
+            <Etiqueta texto="Número de póliza">
+              <input name="poliza_numero" defaultValue={k.poliza_numero ?? ""} className={campo} />
+            </Etiqueta>
+            <Etiqueta texto="Vence">
+              <input type="date" name="poliza_vence" defaultValue={k.poliza_vence ?? ""} className={campo} />
+            </Etiqueta>
+            <Etiqueta texto="Costo">
+              <input name="poliza_costo" inputMode="decimal" defaultValue={k.poliza_costo ?? ""} className={campo} />
+            </Etiqueta>
+            <Boton className="col-span-2 justify-self-start">Guardar póliza</Boton>
+          </form>
+        </details>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-gris">Contrato para firma electrónica</span>
+        {(docs ?? []).map((x) => (
+          <Link key={x.id} href={`/contratos/${x.id}`} className="font-semibold text-verde hover:underline">
+            {x.estado === "firmado" ? "✓ Contrato firmado" : x.estado === "enviado" ? "Contrato enviado a firmar" : "Borrador del contrato"} · {fechaConAnio(x.created_at.slice(0, 10))}
+          </Link>
+        ))}
+        {!(docs ?? []).some((x) => x.estado !== "firmado") && (
+          <form action={prepararContrato}>
+            <input type="hidden" name="contrato_id" value={contratoId} />
+            {avalNombre && <input type="hidden" name="fiador" value={avalNombre} />}
+            <Boton estilo="claro" enviando="Preparando…" className="mt-1">
+              Generar contrato para firmar
+            </Boton>
+          </form>
+        )}
+      </div>
+    </div>
+  );
 }

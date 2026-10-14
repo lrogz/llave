@@ -12,6 +12,9 @@ import { primerNombre } from "@/lib/crm";
 import { BUCKET, formatoFecha, linkWhatsApp, origen, pesos } from "@/lib/util";
 import { sesionConOrg } from "@/lib/sesion";
 import { borrarFoto, estadoProspecto, guardarAnuncio, publicarAnuncio, subirFotos } from "./actions";
+import { pedirSolicitud } from "@/app/solicitudes/actions";
+import { COLOR_SOLICITUD, ESTADOS_SOLICITUD } from "@/lib/solicitud";
+import { etiqueta } from "@/lib/datos";
 
 export const metadata: Metadata = { title: "Anuncio · Black Key" };
 
@@ -45,6 +48,8 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
     .maybeSingle();
   if (!data) notFound();
   const p = data as unknown as Propiedad;
+  const { data: sols, error: errSol } = await supabase.from("solicitudes_renta").select("id, nombre, estado, prospecto_id, created_at").eq("propiedad_id", p.id).order("created_at", { ascending: false });
+  const solicitudes = errSol ? null : ((sols ?? []) as { id: string; nombre: string; estado: string; prospecto_id: string | null; created_at: string }[]);
   const [{ data: fs }, { data: pr }] = await Promise.all([
     supabase.from("fotos_propiedad").select("id, storage_path").eq("propiedad_id", p.id).order("created_at"),
     supabase.from("prospectos").select("id, nombre, telefono, email, mensaje, mudanza, estado, created_at").eq("propiedad_id", p.id).order("created_at", { ascending: false }),
@@ -218,6 +223,15 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
                       >
                         WhatsApp
                       </a>
+                      {solicitudes && !solicitudes.some((s) => s.prospecto_id === x.id) && (
+                        <form action={pedirSolicitud}>
+                          <input type="hidden" name="propiedad_id" value={p.id} />
+                          <input type="hidden" name="prospecto_id" value={x.id} />
+                          <Boton estilo="claro" enviando="…" className="min-h-10 px-3 text-xs">
+                            Pedir solicitud
+                          </Boton>
+                        </form>
+                      )}
                       <form action={estadoProspecto} className="flex gap-1">
                         <input type="hidden" name="prospecto_id" value={x.id} />
                         <select name="estado" defaultValue={x.estado} aria-label={`Estado de ${x.nombre}`} className="min-h-10 rounded-xl border border-borde bg-white px-2 text-xs">
@@ -237,6 +251,35 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               </ul>
             )}
           </section>
+          {solicitudes && (
+            <section aria-label="Solicitudes" className="flex min-w-0 flex-[1_1_300px] flex-col gap-3 rounded-2xl bg-white p-5">
+              <h2 className="font-bold">Solicitudes ({solicitudes.length})</h2>
+              <p className="text-sm text-gris">Datos, referencias y documentos del interesado para la investigación y la póliza jurídica (Morada Uno).</p>
+              {solicitudes.length > 0 && (
+                <ul className="flex flex-col divide-y divide-borde-suave text-sm">
+                  {solicitudes.map((s) => (
+                    <li key={s.id}>
+                      <Link href={`/solicitudes/${s.id}`} className="flex items-center justify-between gap-2 py-2 hover:opacity-80">
+                        <span className="font-semibold">{s.nombre}</span>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${COLOR_SOLICITUD[s.estado] ?? ""}`}>{etiqueta(ESTADOS_SOLICITUD, s.estado)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <details>
+                <summary className="cursor-pointer text-sm font-semibold text-verde">+ Solicitud para alguien más</summary>
+                <form action={pedirSolicitud} className="mt-2 flex flex-col gap-2">
+                  <input type="hidden" name="propiedad_id" value={p.id} />
+                  <input name="nombre" required maxLength={120} placeholder="Nombre" aria-label="Nombre del interesado" className={campo} />
+                  <input name="telefono" type="tel" maxLength={30} placeholder="WhatsApp" aria-label="WhatsApp del interesado" className={campo} />
+                  <Boton estilo="claro" className="self-start">
+                    Crear solicitud
+                  </Boton>
+                </form>
+              </details>
+            </section>
+          )}
         </div>
       </main>
     </div>

@@ -130,6 +130,9 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
                 Siguiente ›
               </Link>
             )}
+            <Link href="/pagos/conciliar" className="flex min-h-11 items-center rounded-xl bg-tinta px-4 text-sm font-bold text-white">
+              Conciliar con el banco
+            </Link>
           </nav>
         </header>
 
