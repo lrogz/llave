@@ -28,7 +28,7 @@ export function FormHorario({ token, horario }: { token: string; horario: { dias
           </label>
         ))}
       </fieldset>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-gris">
           Desde
           <input type="time" name="desde" defaultValue={horario.desde ?? "09:00"} step={1800} className={`${campo} text-tinta`} />
@@ -37,7 +37,7 @@ export function FormHorario({ token, horario }: { token: string; horario: { dias
           Hasta
           <input type="time" name="hasta" defaultValue={horario.hasta ?? "18:00"} step={1800} className={`${campo} text-tinta`} />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-gris">
+        <label className="col-span-2 flex flex-col gap-1 text-xs font-semibold text-gris sm:col-span-1">
           Cada visita dura
           <select name="duracion" defaultValue={String(horario.duracion ?? 60)} className={`${campo} text-tinta`}>
             <option value="30">30 min</option>

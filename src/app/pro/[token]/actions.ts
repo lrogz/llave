@@ -6,6 +6,7 @@ import { horarioValido, type Horario } from "@/lib/agenda";
 import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
 import { TIPOS_DOC_PROVEEDOR } from "@/lib/red";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enviarAProveedor } from "@/lib/push";
 
 const txt = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -88,4 +89,30 @@ export async function subirArchivoProveedor(f: FormData) {
     await admin.from("proveedores").update({ documentos: docs }).eq("id", id);
   }
   revalidatePath(`/pro/${token}`);
+}
+
+// Notificaciones en el celular del proveedor (su portal instalado como app).
+export async function suscribirProveedor(token: string, datos: unknown, dispositivo: string) {
+  const { admin, id } = await proveedorDe(token);
+  const sub = datos as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+  const endpoint = String(sub?.endpoint ?? "");
+  const p256dh = String(sub?.keys?.p256dh ?? "");
+  const auth = String(sub?.keys?.auth ?? "");
+  if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || !p256dh || !auth || p256dh.length > 200 || auth.length > 100) return { ok: false };
+  const { error } = await admin
+    .from("suscripciones_push")
+    .upsert({ endpoint, p256dh, auth, proveedor_id: id, user_id: null, organizacion_id: null, dispositivo: String(dispositivo).slice(0, 80) || null }, { onConflict: "endpoint" });
+  return { ok: !error };
+}
+
+export async function desuscribirProveedor(token: string, endpoint: string) {
+  const { admin, id } = await proveedorDe(token);
+  await admin.from("suscripciones_push").delete().eq("endpoint", String(endpoint).slice(0, 1000)).eq("proveedor_id", id);
+  return { ok: true };
+}
+
+export async function probarProveedor(token: string) {
+  const { id } = await proveedorDe(token);
+  const n = await enviarAProveedor(id, { titulo: "¡Listo! 🔑", cuerpo: "Así te avisaremos de trabajos nuevos y de tus visitas.", url: `/pro/${token}`, tag: "prueba" });
+  return { ok: n > 0 };
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { desuscribir, probarNotificacion, suscribir } from "@/app/notificaciones/actions";
 
 const CLAVE = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
@@ -38,8 +37,21 @@ function nombreDispositivo() {
   return [so, nav].filter(Boolean).join(" · ");
 }
 
-// Instalar la app y activar las notificaciones en este dispositivo.
-export function AppCelular({ configurado }: { configurado: boolean }) {
+type Acciones = {
+  suscribir: (sub: unknown, dispositivo: string) => Promise<{ ok: boolean }>;
+  desuscribir: (endpoint: string) => Promise<unknown>;
+  probar: () => Promise<{ ok: boolean }>;
+};
+
+// Instalar la app y activar las notificaciones en este dispositivo (administradoras y proveedores).
+export function AppCelular({
+  configurado,
+  avisos,
+  nombre = "Black Key",
+  suscribir,
+  desuscribir,
+  probar: probarNotificacion,
+}: Acciones & { configurado: boolean; avisos: string; nombre?: string }) {
   const entorno = useSyncExternalStore(suscribirse, leerEntorno, () => SIN);
   const [puedeInstalar, setPuedeInstalar] = useState(false);
   const [activa, setActiva] = useState<boolean | null>(null);
@@ -120,7 +132,7 @@ export function AppCelular({ configurado }: { configurado: boolean }) {
           <p className="text-sm text-verde-oscuro">✓ Ya la estás usando como app.</p>
         ) : puedeInstalar ? (
           <button type="button" onClick={instalar} className={`${boton} self-start bg-verde text-white`}>
-            Instalar Black Key
+            Instalar {nombre}
           </button>
         ) : entorno.ios ? (
           <ol className="list-decimal pl-5 text-sm text-gris">
@@ -131,7 +143,7 @@ export function AppCelular({ configurado }: { configurado: boolean }) {
             <li>
               Elige <strong>Agregar a inicio</strong> y luego <strong>Agregar</strong>.
             </li>
-            <li>Abre Black Key desde el ícono nuevo y regresa aquí para activar avisos.</li>
+            <li>Abre {nombre} desde el ícono nuevo y activa los avisos ahí.</li>
           </ol>
         ) : (
           <p className="text-sm text-gris">En Android abre el menú ⋮ de Chrome › &quot;Instalar app&quot;. En la compu, el ícono de instalar a la derecha de la barra de direcciones.</p>
@@ -140,7 +152,7 @@ export function AppCelular({ configurado }: { configurado: boolean }) {
 
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-bold">2. Notificaciones</h3>
-        <p className="text-sm text-gris">Reportes nuevos (urgentes primero), comprobantes de pago, cotizaciones, respuestas de dueños, interesados en tus anuncios, solicitudes y firmas.</p>
+        <p className="text-sm text-gris">{avisos}</p>
         {!configurado ? (
           <p className="text-sm text-gris">Falta configurar las llaves de notificaciones en el servidor (ver README).</p>
         ) : !entorno.soportaPush ? (

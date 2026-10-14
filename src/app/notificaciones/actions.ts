@@ -8,7 +8,8 @@ type Sub = { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
 
 // Guarda la suscripción de este dispositivo. Con el cliente admin para que un mismo
 // navegador pueda pasar de una cuenta a otra (el endpoint es único).
-export async function suscribir(sub: Sub, dispositivo: string) {
+export async function suscribir(datos: unknown, dispositivo: string) {
+  const sub = datos as Sub;
   const { user, org } = await sesionConOrg();
   const endpoint = String(sub?.endpoint ?? "");
   const p256dh = String(sub?.keys?.p256dh ?? "");

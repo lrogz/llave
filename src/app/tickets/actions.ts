@@ -3,6 +3,9 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { sesionConOrg } from "@/lib/sesion";
+import { avisarAprobado } from "@/lib/citas";
+import { avisarProveedorPush } from "@/lib/push";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET, QUIEN_PAGA, TIPOS_PERMITIDOS, extension } from "@/lib/datos";
 
 // Vercel acepta hasta ~4.5 MB por envío; las fotos se reducen en el navegador antes de subir.
@@ -80,6 +83,7 @@ export async function invitarProveedor(form: FormData) {
   const { data: t } = await supabase.from("tickets").select("categoria").eq("id", ticket.id).single();
   const proveedorId = await resolverProveedor(supabase, ticket.organizacion_id, form, t?.categoria ?? null);
 
+  const { data: previa } = await supabase.from("solicitudes_cotizacion").select("id").eq("ticket_id", ticket.id).eq("proveedor_id", proveedorId).maybeSingle();
   const { error } = await supabase
     .from("solicitudes_cotizacion")
     .upsert(
@@ -87,6 +91,18 @@ export async function invitarProveedor(form: FormData) {
       { onConflict: "ticket_id,proveedor_id", ignoreDuplicates: true },
     );
   if (error) throw new Error("No pudimos crear la solicitud.");
+  if (!previa) {
+    // Si el proveedor instaló su portal, le llega el trabajo al celular.
+    const { data: s } = await supabase.from("solicitudes_cotizacion").select("token, tickets(titulo, urgencia, propiedades(colonia)), organizaciones(nombre)").eq("ticket_id", ticket.id).eq("proveedor_id", proveedorId).maybeSingle();
+    const x = s as unknown as { token: string; tickets: { titulo: string; urgencia: string; propiedades: { colonia: string | null } | null } | null; organizaciones: { nombre: string } | null } | null;
+    if (x)
+      avisarProveedorPush(proveedorId, {
+        titulo: x.tickets?.urgencia === "urgente" ? "🚨 Trabajo urgente para cotizar" : "Nuevo trabajo para cotizar",
+        cuerpo: `${x.organizaciones?.nombre ?? ""}: ${x.tickets?.titulo ?? ""}${x.tickets?.propiedades?.colonia ? ` (${x.tickets.propiedades.colonia})` : ""}. Ve las fotos y cotiza.`,
+        url: `/c/${x.token}`,
+        tag: `sol-${x.token}`,
+      });
+  }
 
   await pasarACotizando(supabase, ticket);
   revalidatePath(`/tickets/${ticket.id}`);
@@ -207,6 +223,7 @@ export async function aprobarYo(form: FormData) {
     .from("tickets")
     .update({ estado: "en_proceso", quien_paga: quienPagaValido.has(quienPaga) ? quienPaga : null })
     .eq("id", ticket.id);
+  await avisarAprobado(createAdminClient(), cot.id);
 
   revalidatePath(`/tickets/${ticket.id}`);
 }

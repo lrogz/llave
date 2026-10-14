@@ -11,6 +11,7 @@ import { formatoFechaHora } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
 import { pushConfigurado } from "@/lib/push";
 import { AppCelular } from "@/components/AppCelular";
+import { desuscribir, probarNotificacion, suscribir } from "@/app/notificaciones/actions";
 import { guardarAvisos, guardarNombre } from "./actions";
 import { BotonMandarAhora, FormContrasena, FormCorreoAvisos } from "./Formularios";
 
@@ -62,7 +63,13 @@ async function Contenido() {
         <section id="app" aria-label="App en tu celular" className="flex scroll-mt-6 flex-col gap-3 rounded-2xl bg-white p-5">
           <h2 className="font-bold">Black Key en tu celular</h2>
           <p className="text-sm text-gris">Instálala como app (sin tienda de apps) y recibe avisos al instante. Cada persona del equipo la activa en su propio celular.</p>
-          <AppCelular configurado={pushConfigurado()} />
+          <AppCelular
+            configurado={pushConfigurado()}
+            avisos="Reportes nuevos (urgentes primero), comprobantes de pago, cotizaciones, respuestas de dueños, interesados en tus anuncios, solicitudes y firmas."
+            suscribir={suscribir}
+            desuscribir={desuscribir}
+            probar={probarNotificacion}
+          />
         </section>
 
         <div className="flex flex-wrap items-start gap-5">

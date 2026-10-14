@@ -6,6 +6,7 @@ import { TIPOS_SERVICIO, etiqueta, formatoFecha, pesos } from "./datos";
 import { inicioDeMes, mesAnterior, mesTexto } from "./reporte";
 import { generarMantenimientos } from "./mantenimiento";
 import { enMX, fechaCita } from "./agenda";
+import { enviarAProveedor } from "./push";
 import { enviarPlantilla, telefonoValido, whatsappConfigurado, type MensajeWA } from "./whatsapp";
 
 export type TipoAviso = "renta" | "vencida" | "reporte" | "renovacion" | "servicios" | "citas" | "resumen";
@@ -196,7 +197,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     const hasta = enMX(hoyMX(2), "00:00").toISOString();
     const { data: cs } = await db
       .from("citas")
-      .select("id, inicio, proveedor_id, proveedores(nombre, telefono), propiedades(nombre, colonia, contratos(activo, inquilinos(nombre, email, telefono))), tickets(titulo, inquilinos(nombre, email, telefono))")
+      .select("id, inicio, recordatorio_at, proveedor_id, proveedores(nombre, telefono), propiedades(nombre, colonia, contratos(activo, inquilinos(nombre, email, telefono))), tickets(titulo, inquilinos(nombre, email, telefono))")
       .eq("organizacion_id", org.id)
       .eq("estado", "confirmada")
       .gte("inicio", desde)
@@ -204,6 +205,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     const lista = (cs ?? []) as unknown as {
       id: string;
       inicio: string;
+      recordatorio_at: string | null;
       proveedor_id: string;
       proveedores: { nombre: string; telefono: string | null } | null;
       propiedades: { nombre: string; colonia: string | null; contratos: { activo: boolean; inquilinos: { nombre: string; email: string | null; telefono: string | null } | null }[] } | null;
@@ -233,6 +235,14 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
           wa: { telefono: tel!, plantilla: "bk_cita_proveedor", variables: [primerNombre(prov), org.nombre, trabajo, [casa, v.propiedades?.colonia].filter(Boolean).join(", "), cuando, portal.has(v.proveedor_id) ? `${base}/pro/${portal.get(v.proveedor_id)}` : base] },
         });
     }
+    // Notificación al portal instalado del proveedor (una sola vez por cita).
+    for (const v of lista.filter((x) => !x.recordatorio_at))
+      await enviarAProveedor(v.proveedor_id, {
+        titulo: "Mañana tienes visita",
+        cuerpo: `${fechaCita(v.inicio)} · ${v.tickets?.titulo ?? "visita"} en ${[v.propiedades?.nombre, v.propiedades?.colonia].filter(Boolean).join(", ")} (${org.nombre})`,
+        url: portal.has(v.proveedor_id) ? `/pro/${portal.get(v.proveedor_id)}` : "/",
+        tag: `cita-${v.id}`,
+      });
     if (lista.length) await db.from("citas").update({ recordatorio_at: new Date().toISOString() }).in("id", lista.map((x) => x.id)).is("recordatorio_at", null);
   }
 

@@ -67,6 +67,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    15. `supabase/migrations/20261014140000_facturacion.sql`
    16. `supabase/migrations/20261014150000_red_agenda.sql`
    17. `supabase/migrations/20261014160000_push.sql`
+   18. `supabase/migrations/20261014170000_push_proveedores.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -189,6 +190,8 @@ Reglas que aplica (valídalas con tu contador): clave 80131500 / unidad E48; cas
 1. En tu compu corre `npx web-push generate-vapid-keys` (una sola vez; no las compartas por chat).
 2. En Vercel agrega `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (la pública), `VAPID_PRIVATE_KEY` (la privada) y `VAPID_SUBJECT` = `mailto:tu@correo`. Redeploy. Si cambias las llaves, todos tienen que volver a activar avisos.
 3. Cada persona del equipo: Ajustes › "Black Key en tu celular" › Instalar (Android/compu) o Compartir › Agregar a inicio (iPhone, iOS 16.4+), y luego "Activar notificaciones" desde la app instalada.
+
+Proveedores: su portal `/pro/…` también se instala ("Mi agenda") y les avisa de trabajos nuevos para cotizar, cotizaciones aprobadas, visitas agendadas o canceladas y el recordatorio un día antes. Usa las mismas llaves.
 
 Avisan al instante: reporte nuevo (QR o WhatsApp), comprobante de pago, cotización recibida, respuesta del dueño, interesado en un anuncio, solicitud de renta, firma de contrato y horario elegido por el inquilino.
 

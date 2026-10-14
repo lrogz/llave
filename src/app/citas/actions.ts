@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { enMX, estaLibre, horarioValido } from "@/lib/agenda";
+import { enMX, estaLibre, fechaCita, horarioValido } from "@/lib/agenda";
+import { avisarProveedorPush } from "@/lib/push";
 import { avisarProveedor } from "@/lib/citas";
 import { origen } from "@/lib/util";
 import { sesionConOrg } from "@/lib/sesion";
@@ -55,7 +56,10 @@ export async function agendarCita(_: EstadoCita, f: FormData): Promise<EstadoCit
   await supabase.from("citas").update({ estado: "cancelada" }).eq("ticket_id", ticket.id).eq("proveedor_id", proveedor.id).eq("estado", "por_elegir");
   const avisado = await avisarProveedor(admin, data.id, await origen());
   revalidatePath(`/tickets/${ticket.id}`);
-  return { ok: true, mensaje: avisado ? "Visita agendada. Le avisamos al proveedor por WhatsApp." : "Visita agendada." };
+  return {
+    ok: true,
+    mensaje: avisado.wa ? "Visita agendada. Le avisamos al proveedor por WhatsApp." : avisado.push ? "Visita agendada. Le llegó el aviso al proveedor en su celular." : "Visita agendada.",
+  };
 }
 
 // Crea un link para que el inquilino elija el horario entre los libres del proveedor.
@@ -75,6 +79,10 @@ export async function cancelarCita(f: FormData) {
   const { supabase, org } = await sesionConOrg();
   const id = txt(f, "cita_id");
   if (!uuid(id)) return;
-  const { data } = await supabase.from("citas").update({ estado: "cancelada" }).eq("id", id).eq("organizacion_id", org.id).in("estado", ["por_elegir", "confirmada"]).select("ticket_id").maybeSingle();
+  const { data } = await supabase.from("citas").update({ estado: "cancelada" }).eq("id", id).eq("organizacion_id", org.id).in("estado", ["por_elegir", "confirmada"]).select("ticket_id, proveedor_id, inicio").maybeSingle();
+  if (data?.inicio) {
+    const { data: portal } = await createAdminClient().from("proveedor_portal").select("token").eq("proveedor_id", data.proveedor_id).maybeSingle();
+    avisarProveedorPush(data.proveedor_id, { titulo: "Visita cancelada", cuerpo: `${org.nombre} canceló la visita del ${fechaCita(data.inicio)}.`, url: portal ? `/pro/${portal.token}` : "/", tag: `cita-${id}` });
+  }
   if (data?.ticket_id) revalidatePath(`/tickets/${data.ticket_id}`);
 }

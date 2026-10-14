@@ -56,6 +56,23 @@ export function avisarEquipo(organizacionId: string, aviso: AvisoPush) {
   });
 }
 
+// Al proveedor (su portal instalado). Espera el envío: se usa desde acciones y el cron.
+export async function enviarAProveedor(proveedorId: string, aviso: AvisoPush) {
+  if (!pushConfigurado()) return 0;
+  try {
+    const { data } = await createAdminClient().from("suscripciones_push").select("id, endpoint, p256dh, auth").eq("proveedor_id", proveedorId);
+    return await enviar((data ?? []) as Sus[], aviso);
+  } catch {
+    return 0;
+  }
+}
+
+// Igual, pero después de responder.
+export function avisarProveedorPush(proveedorId: string, aviso: AvisoPush) {
+  if (!pushConfigurado()) return;
+  after(() => enviarAProveedor(proveedorId, aviso));
+}
+
 export async function enviarAUsuario(userId: string, aviso: AvisoPush) {
   if (!pushConfigurado()) return 0;
   const { data } = await createAdminClient().from("suscripciones_push").select("id, endpoint, p256dh, auth").eq("user_id", userId);

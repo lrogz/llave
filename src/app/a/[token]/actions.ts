@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { avisarEquipo } from "@/lib/push";
+import { avisarAprobado } from "@/lib/citas";
 
 export async function decidir(token: string, decision: "aprobada" | "rechazada", comentario: string) {
   if (decision !== "aprobada" && decision !== "rechazada") return { ok: false, error: "Decisión no válida." };
@@ -27,6 +28,7 @@ export async function decidir(token: string, decision: "aprobada" | "rechazada",
 
   if (decision === "aprobada") {
     await admin.from("cotizaciones").update({ estado: "aprobada" }).eq("id", ap.cotizacion_id);
+    await avisarAprobado(admin, ap.cotizacion_id);
     await admin.from("tickets").update({ estado: "en_proceso" }).eq("id", cot.ticket_id);
   } else {
     await admin.from("cotizaciones").update({ estado: "rechazada" }).eq("id", ap.cotizacion_id);

@@ -10,8 +10,21 @@ import { TIPOS_DOC_PROVEEDOR } from "@/lib/red";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { guardarPerfil, marcarCita, subirArchivoProveedor } from "./actions";
 import { FormHorario } from "./FormHorario";
+import { AppCelular } from "@/components/AppCelular";
+import { RegistrarSW } from "@/components/RegistrarSW";
+import { pushConfigurado } from "@/lib/push";
+import { desuscribirProveedor, probarProveedor, suscribirProveedor } from "./actions";
 
-export const metadata: Metadata = { title: "Mi agenda · Black Key", robots: { index: false } };
+export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
+  const { token } = await params;
+  const valido = /^[0-9a-f]{32}$/.test(token);
+  return {
+    title: "Mi agenda · Black Key",
+    robots: { index: false },
+    manifest: valido ? `/pro/${token}/manifest.webmanifest` : undefined,
+    appleWebApp: { capable: true, title: "Mi agenda", statusBarStyle: "black-translucent" },
+  };
+}
 
 const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
@@ -21,6 +34,7 @@ export default function Portal(props: Props) {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 px-5 py-6">
       <Logo />
+      <RegistrarSW />
       <Suspense fallback={<p className="text-sm text-gris">Cargando…</p>}>
         <Contenido {...props} />
       </Suspense>
@@ -76,6 +90,16 @@ async function Contenido({ params, searchParams }: Props) {
     .order("inicio")
     .limit(50);
   const citas = (cs ?? []) as unknown as Cita[];
+  const { data: sols } = await admin
+    .from("solicitudes_cotizacion")
+    .select("token, estado, enviada_at, organizaciones(nombre), tickets(titulo, urgencia, estado, propiedades(colonia))")
+    .eq("proveedor_id", prov.id)
+    .in("estado", ["enviada", "vista"])
+    .order("enviada_at", { ascending: false })
+    .limit(30);
+  const porCotizar = ((sols ?? []) as unknown as { token: string; estado: string; enviada_at: string; organizaciones: { nombre: string } | null; tickets: { titulo: string; urgencia: string; estado: string; propiedades: { colonia: string | null } | null } | null }[]).filter(
+    (x) => x.tickets && !["resuelto", "cancelado", "en_proceso"].includes(x.tickets.estado),
+  );
   const rutas = [prov.foto_path, ...prov.fotos_trabajos].filter((x): x is string => !!x);
   const { data: firmadas } = rutas.length ? await admin.storage.from(BUCKET).createSignedUrls(rutas, 3600) : { data: [] };
   const url = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]));
@@ -100,6 +124,31 @@ async function Contenido({ params, searchParams }: Props) {
         <p className={`rounded-2xl p-4 text-sm ${prov.estado_red === "aprobado" ? "bg-verde-claro text-verde-oscuro" : prov.estado_red === "rechazado" ? "bg-naranja-claro text-naranja-oscuro" : "bg-[#FFF4E0] text-[#7A4E00]"}`}>
           {prov.estado_red === "aprobado" ? "✓ Verificado: ya apareces en la red y te pueden invitar a cotizar y agendar." : prov.estado_red === "rechazado" ? "Tu solicitud no fue aprobada por ahora. Escríbenos si quieres más información." : "Tu solicitud está en revisión. Te avisamos cuando estés verificado."}
         </p>
+      )}
+
+      {porCotizar.length > 0 && (
+        <section aria-label="Por cotizar" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
+          <h2 className="font-bold">Trabajos por cotizar ({porCotizar.length})</h2>
+          <ul className="flex flex-col gap-2">
+            {porCotizar.map((x) => (
+              <li key={x.token}>
+                <a href={`/c/${x.token}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-borde-suave p-3 text-sm hover:border-verde">
+                  <span className="min-w-0">
+                    <span className="block font-bold">
+                      {x.tickets?.urgencia === "urgente" ? "🚨 " : ""}
+                      {x.tickets?.titulo}
+                    </span>
+                    <span className="text-gris">
+                      {x.organizaciones?.nombre}
+                      {x.tickets?.propiedades?.colonia ? ` · ${x.tickets.propiedades.colonia}` : ""}
+                    </span>
+                  </span>
+                  <span className="flex min-h-10 items-center rounded-xl bg-verde px-3 text-xs font-bold text-white">{x.estado === "enviada" ? "Ver y cotizar" : "Cotizar"}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <section aria-label="Mis citas" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
@@ -149,6 +198,19 @@ async function Contenido({ params, searchParams }: Props) {
             })}
           </ul>
         )}
+      </section>
+
+      <section aria-label="Avisos en tu celular" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
+        <h2 className="font-bold">Recibe tus trabajos en el celular</h2>
+        <p className="text-sm text-gris">Instala tu agenda como app (sin tienda de apps) y te avisamos al instante.</p>
+        <AppCelular
+          configurado={pushConfigurado()}
+          nombre="Mi agenda"
+          avisos="Trabajos nuevos para cotizar, cotizaciones aprobadas, visitas agendadas o canceladas y el recordatorio un día antes."
+          suscribir={suscribirProveedor.bind(null, token)}
+          desuscribir={desuscribirProveedor.bind(null, token)}
+          probar={probarProveedor.bind(null, token)}
+        />
       </section>
 
       <section aria-label="Mi horario" className="flex flex-col gap-3 rounded-2xl bg-white p-5">
