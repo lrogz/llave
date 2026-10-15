@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { estadoPlan, puedeAgregar } from "@/lib/plan";
-import { sincronizarCantidad } from "@/lib/stripe";
 
 export async function crearOrganizacion(formData: FormData) {
   const nombre = String(formData.get("nombre") ?? "").trim();
@@ -26,7 +25,7 @@ export async function agregarPropiedad(formData: FormData) {
   if (!organizacion_id || !nombre) return;
 
   const supabase = await createClient();
-  // Plan gratis: hasta 3 propiedades (sin límite en la prueba o con plan activo).
+  // Límite del plan: gratis hasta 2 propiedades; cada plan de pago incluye hasta X.
   if (!puedeAgregar(await estadoPlan(supabase, organizacion_id))) redirect("/plan?limite=1");
   const { error } = await supabase.from("propiedades").insert({
     organizacion_id,
@@ -37,7 +36,6 @@ export async function agregarPropiedad(formData: FormData) {
     renta_mensual: rentaTexto ? Number(rentaTexto) : null,
   });
   if (error) throw new Error(error.message);
-  await sincronizarCantidad(createAdminClient(), organizacion_id).catch(() => {});
   revalidatePath("/");
 }
 

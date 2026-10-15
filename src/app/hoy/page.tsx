@@ -166,15 +166,12 @@ async function Contenido() {
 
         <BannerApp />
 
-        {!plan.pagando && (plan.enPrueba ? plan.diasPrueba <= 7 : plan.propiedades > GRATIS_HASTA) && (
+        {plan.propiedades >= plan.limite && (
           <Link href="/plan" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-tinta p-4 text-white">
             <span className="text-sm">
-              {plan.enPrueba
-                ? `Tu prueba gratis termina en ${plan.diasPrueba} ${plan.diasPrueba === 1 ? "día" : "días"}.`
-                : `Tienes ${plan.propiedades} propiedades y el plan gratis incluye ${GRATIS_HASTA}.`}{" "}
-              Activa tu plan para seguir sin límites.
+              {plan.plan ? `Llegaste a las ${plan.limite} propiedades de tu plan ${plan.plan.nombre}.` : `Ya usas las ${GRATIS_HASTA} propiedades del plan gratis.`} Sube de plan para agregar más.
             </span>
-            <span className="rounded-xl bg-menta px-3 py-2 text-sm font-bold text-tinta">Ver plan</span>
+            <span className="rounded-xl bg-menta px-3 py-2 text-sm font-bold text-tinta">Ver planes</span>
           </Link>
         )}
 

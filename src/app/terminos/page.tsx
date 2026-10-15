@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Lista, PaginaLegal, Seccion } from "@/components/PaginaLegal";
 import { LEGAL } from "@/lib/legal";
-import { GRATIS_HASTA, PRECIO_PROPIEDAD } from "@/lib/plan";
+import { GRATIS_HASTA, PLANES } from "@/lib/planes";
 
 export const metadata: Metadata = { title: `Términos y condiciones · ${LEGAL.marca}` };
 
@@ -34,8 +34,8 @@ export default function Terminos() {
         <Lista
           items={[
             `Gratis para siempre hasta ${GRATIS_HASTA} propiedades.`,
-            "Al crear tu cuenta tienes 30 días de prueba sin límite de propiedades.",
-            `Plan de pago: $${PRECIO_PROPIEDAD} MXN + IVA por propiedad al mes, cobrado por adelantado con tarjeta a través de Stripe. El monto se ajusta automáticamente cuando agregas o quitas propiedades.`,
+            `Planes de pago mensuales, más IVA, cobrados por adelantado con tarjeta a través de Stripe: ${PLANES.map((p) => `${p.nombre} hasta ${p.hasta} propiedades por $${p.precio.toLocaleString("es-MX")} MXN`).join("; ")}. Para más propiedades se acuerda un plan a la medida.`,
+            "Puedes subir o bajar de plan cuando quieras; el cobro se ajusta de forma proporcional. No puedes bajar a un plan donde no quepan tus propiedades.",
             "Sin plazos forzosos: puedes cancelar cuando quieras desde la sección Plan; la cancelación aplica al final del periodo pagado y no hay reembolsos por periodos parciales.",
             "Si un pago no se puede cobrar, tu cuenta regresa al plan gratis hasta que lo regularices; no borramos tu información por ello.",
             "Podemos cambiar los precios avisándote con al menos 30 días de anticipación.",

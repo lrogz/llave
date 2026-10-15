@@ -1,41 +1,39 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { diasEntre, hoyMX } from "./crm";
+import { GRATIS_HASTA, planPorClave, type Plan } from "./planes";
 
-// Precio: $110 MXN por propiedad al mes (sin IVA). Gratis hasta 3 propiedades. 30 días de prueba sin límite.
-export const PRECIO_PROPIEDAD = 110;
-export const GRATIS_HASTA = 3;
+export { GRATIS_HASTA, PLANES, planPara, planPorClave, MAS_DE } from "./planes";
 
 export type EstadoPlan = {
   propiedades: number;
   pagando: boolean;
-  enPrueba: boolean;
-  diasPrueba: number;
-  pruebaHasta: string;
+  plan: Plan | null; // plan de pago actual (null = gratis)
   costoMensual: number;
-  limite: number | null; // null = sin límite
+  limite: number; // propiedades que caben en el plan actual
   suscripcion: string | null;
   tieneCliente: boolean;
 };
 
+// Precio de Stripe de cada plan.
+export const precioStripe = (clave: string) =>
+  ({ inicial: process.env.STRIPE_PRICE_INICIAL, profesional: process.env.STRIPE_PRICE_PROFESIONAL, agencia: process.env.STRIPE_PRICE_AGENCIA })[clave] ?? null;
+export const planDePrecio = (precio: string | null | undefined) => (["inicial", "profesional", "agencia"] as const).find((c) => precio && precioStripe(c) === precio) ?? null;
+
 export async function estadoPlan(db: SupabaseClient, orgId: string): Promise<EstadoPlan> {
   const [{ data: o }, { count }] = await Promise.all([
-    db.from("organizaciones").select("plan, prueba_hasta, suscripcion_estado, stripe_customer_id").eq("id", orgId).single(),
+    db.from("organizaciones").select("plan, plan_nivel, suscripcion_estado, stripe_customer_id").eq("id", orgId).single(),
     db.from("propiedades").select("id", { count: "exact", head: true }).eq("organizacion_id", orgId),
   ]);
   const propiedades = count ?? 0;
   const pagando = o?.plan === "pro" && ["active", "trialing", "past_due"].includes(o?.suscripcion_estado ?? "");
-  const pruebaHasta = (o?.prueba_hasta as string | null) ?? hoyMX();
-  const diasPrueba = Math.max(0, diasEntre(hoyMX(), pruebaHasta));
-  const enPrueba = !pagando && pruebaHasta >= hoyMX();
+  // Suscripciones de antes de los planes (sin nivel) se tratan como el plan más grande.
+  const plan = pagando ? (planPorClave(o?.plan_nivel as string | null) ?? planPorClave("agencia")) : null;
   return {
     propiedades,
     pagando,
-    enPrueba,
-    diasPrueba,
-    pruebaHasta,
-    costoMensual: propiedades > GRATIS_HASTA ? propiedades * PRECIO_PROPIEDAD : 0,
-    limite: pagando || enPrueba ? null : GRATIS_HASTA,
+    plan,
+    costoMensual: plan?.precio ?? 0,
+    limite: plan?.hasta ?? GRATIS_HASTA,
     suscripcion: (o?.suscripcion_estado as string | null) ?? null,
     tieneCliente: Boolean(o?.stripe_customer_id),
   };
@@ -43,5 +41,5 @@ export async function estadoPlan(db: SupabaseClient, orgId: string): Promise<Est
 
 // ¿Puede dar de alta `nuevas` propiedades más?
 export function puedeAgregar(e: EstadoPlan, nuevas = 1) {
-  return e.limite === null || e.propiedades + nuevas <= e.limite;
+  return e.propiedades + nuevas <= e.limite;
 }

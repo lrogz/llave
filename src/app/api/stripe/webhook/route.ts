@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { connection } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { marcarPagado } from "@/lib/cobro";
-import { firmaValida, sincronizarCantidad, stripe } from "@/lib/stripe";
+import { planDePrecio } from "@/lib/plan";
+import { firmaValida, stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Stripe avisa aquí cuando alguien paga, cambia o cancela su suscripción.
@@ -22,7 +23,7 @@ type Evento = {
       subscription?: string | null;
       status?: string;
       metadata?: Record<string, string>;
-      items?: { data: { quantity?: number }[] };
+      items?: { data: { quantity?: number; price?: { id: string } }[] };
     };
   };
 };
@@ -49,9 +50,14 @@ export async function POST(request: NextRequest) {
   if (ev.type === "checkout.session.completed" && o.client_reference_id && o.subscription) {
     await admin
       .from("organizaciones")
-      .update({ plan: "pro", suscripcion_estado: "active", stripe_customer_id: o.customer ?? null, stripe_subscription_id: o.subscription })
+      .update({
+        plan: "pro",
+        suscripcion_estado: "active",
+        stripe_customer_id: o.customer ?? null,
+        stripe_subscription_id: o.subscription,
+        ...(planDePrecio(o.metadata?.plan_precio) ? { plan_nivel: planDePrecio(o.metadata?.plan_precio) } : {}),
+      })
       .eq("id", o.client_reference_id);
-    await sincronizarCantidad(admin, o.client_reference_id).catch(() => {});
   }
 
   if (ev.type.startsWith("customer.subscription.")) {
@@ -64,7 +70,9 @@ export async function POST(request: NextRequest) {
         plan: terminada ? "inicio" : "pro",
         suscripcion_estado: terminada ? "canceled" : (o.status ?? null),
         stripe_subscription_id: o.id,
-        propiedades_cobradas: o.items?.data[0]?.quantity ?? null,
+        propiedades_cobradas: null,
+        // El plan (Inicial, Profesional, Agencia) sale del precio de la suscripción.
+        ...(planDePrecio(o.items?.data[0]?.price?.id) ? { plan_nivel: planDePrecio(o.items?.data[0]?.price?.id) } : {}),
       })
       .eq(filtro.col, filtro.val);
   }

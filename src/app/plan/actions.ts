@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { estadoPlan } from "@/lib/plan";
+import { revalidatePath } from "next/cache";
+import { estadoPlan, planPorClave, precioStripe } from "@/lib/plan";
 import { sesionConOrg } from "@/lib/sesion";
 import { stripe, stripeConfigurado } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -14,13 +15,28 @@ async function soyAdmin() {
   return s;
 }
 
-// Abre el pago de Stripe por el número de propiedades actual.
-export async function activarPlan() {
+// Contratar un plan (Checkout) o, si ya paga, cambiar de plan (sube o baja; Stripe prorratea).
+export async function elegirPlan(f: FormData) {
   const { supabase, org, user } = await soyAdmin();
   if (!stripeConfigurado()) throw new Error("Los pagos aún no están conectados.");
-  const admin = createAdminClient();
+  const plan = planPorClave(String(f.get("plan") ?? ""));
+  const precio = plan ? precioStripe(plan.clave) : null;
+  if (!plan || !precio) redirect("/plan");
   const e = await estadoPlan(supabase, org.id);
-  const { data: o } = await admin.from("organizaciones").select("stripe_customer_id").eq("id", org.id).single();
+  if (e.propiedades > plan.hasta) redirect(`/plan?no_cabe=${plan.clave}`);
+  const admin = createAdminClient();
+  const { data: o } = await admin.from("organizaciones").select("stripe_customer_id, stripe_subscription_id").eq("id", org.id).single();
+
+  if (e.pagando && o?.stripe_subscription_id) {
+    const sub = await stripe<{ items: { data: { id: string }[] } }>("GET", `/subscriptions/${o.stripe_subscription_id}`);
+    const item = sub.items.data[0]?.id;
+    if (!item) redirect("/plan");
+    await stripe("POST", `/subscriptions/${o.stripe_subscription_id}`, { items: { 0: { id: item, price: precio, quantity: 1 } }, proration_behavior: "create_prorations", metadata: { org_id: org.id } });
+    await admin.from("organizaciones").update({ plan_nivel: plan.clave }).eq("id", org.id);
+    revalidatePath("/plan");
+    redirect(`/plan?cambiado=${plan.clave}`);
+  }
+
   let cliente = o?.stripe_customer_id as string | null;
   if (!cliente) {
     const c = await stripe<{ id: string }>("POST", "/customers", { email: user.email, name: org.nombre, metadata: { org_id: org.id } });
@@ -33,8 +49,9 @@ export async function activarPlan() {
     customer: cliente,
     client_reference_id: org.id,
     locale: "es",
-    line_items: { 0: { price: process.env.STRIPE_PRICE_ID, quantity: Math.max(1, e.propiedades) } },
+    line_items: { 0: { price: precio, quantity: 1 } },
     subscription_data: { metadata: { org_id: org.id } },
+    metadata: { plan_precio: precio },
     allow_promotion_codes: "true",
     success_url: `${base}/plan?listo=1`,
     cancel_url: `${base}/plan`,

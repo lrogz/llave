@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { GRATIS_HASTA, MAS_DE, PLANES } from "@/lib/planes";
 
 export const metadata: Metadata = {
   title: "Black Key · Administra tus propiedades sin Excel ni chats sueltos",
   description:
-    "Propiedades, reportes de mantenimiento con fotos, proveedores, cobros de renta y reportes al dueño en una sola app. Gratis hasta 3 propiedades.",
+    "Propiedades, reportes de mantenimiento con fotos, proveedores, cobros de renta y reportes al dueño en una sola app. Gratis hasta 2 propiedades.",
 };
 
 const FUNCIONES = [
@@ -35,6 +36,7 @@ const PREGUNTAS = [
   ["¿Puedo pasar mi información de Excel?", "Sí. Subes tu archivo tal como lo tienes y la app reconoce las columnas: propiedades, dueños, rentas y teléfonos."],
   ["¿Mi asistente puede usarla?", "Sí. Invitas a tu equipo con su propio acceso y decides quién puede borrar o invitar."],
   ["¿Mi información está segura?", "Cada administradora ve únicamente lo suyo. Los links para inquilinos, dueños y proveedores solo muestran lo que les toca."],
+  ["¿Qué pasa si crezco?", "Subes de plan desde la app en un clic y el cobro se ajusta de forma proporcional. Tu información se queda igual."],
   ["¿Cómo cancelo?", "Cuando quieras, desde la app. Sin plazos forzosos."],
 ];
 
@@ -66,13 +68,13 @@ export default function Conoce() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link href="/registro" className="flex min-h-12 items-center rounded-xl bg-verde px-6 font-bold text-white">
-                Pruébala 30 días gratis
+                Empieza gratis
               </Link>
               <a href="#como-funciona" className="flex min-h-12 items-center rounded-xl border border-borde bg-white px-6 font-bold">
                 Ver cómo funciona
               </a>
             </div>
-            <p className="mt-3 text-sm text-gris">Gratis para siempre hasta 3 propiedades. Sin tarjeta para empezar.</p>
+            <p className="mt-3 text-sm text-gris">Gratis para siempre hasta {GRATIS_HASTA} propiedades. Sin tarjeta para empezar.</p>
           </div>
 
           {/* Vista de la app (ilustrativa) */}
@@ -152,24 +154,31 @@ export default function Conoce() {
 
         {/* Precio */}
         <section id="precio" className="mx-auto max-w-6xl px-5 py-16">
-          <div className="grid items-center gap-8 rounded-3xl bg-tinta p-8 text-white md:grid-cols-[1fr_auto] md:p-12">
-            <div>
-              <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Un precio simple</h2>
-              <p className="mt-2 max-w-xl text-[#C9D6D0]">Pagas solo por las propiedades que administras. Todo incluido: tickets, proveedores, cobros, reportes, avisos y equipo.</p>
-              <ul className="mt-5 flex flex-col gap-1.5 text-sm text-[#C9D6D0]">
-                <li>✓ Gratis para siempre hasta 3 propiedades</li>
-                <li>✓ 30 días de prueba sin límite</li>
-                <li>✓ Sin plazos forzosos: cancelas cuando quieras</li>
-              </ul>
+          <div className="rounded-3xl bg-tinta p-8 text-white md:p-12">
+            <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Planes simples</h2>
+            <p className="mt-2 max-w-xl text-[#C9D6D0]">Un pago al mes según cuántas propiedades administras. Todo incluido: tickets, proveedores, cobros, reportes, avisos, app y equipo.</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="flex flex-col gap-1 rounded-2xl bg-white/5 p-5 ring-1 ring-white/15">
+                <p className="font-bold">Gratis</p>
+                <p className="font-display text-3xl font-bold">$0</p>
+                <p className="text-sm text-[#C9D6D0]">Hasta {GRATIS_HASTA} propiedades, para siempre. Pruébala con tu cartera real.</p>
+              </div>
+              {PLANES.map((p, i) => (
+                <div key={p.clave} className={`flex flex-col gap-1 rounded-2xl p-5 ${i === 1 ? "bg-white text-tinta" : "bg-white/5 ring-1 ring-white/15"}`}>
+                  <p className="font-bold">
+                    {p.nombre} {i === 1 && <span className="ml-1 rounded-full bg-verde-claro px-2 py-0.5 text-xs text-verde-oscuro">Más elegido</span>}
+                  </p>
+                  <p className="font-display text-3xl font-bold">
+                    ${p.precio.toLocaleString("es-MX")}
+                    <span className={`text-sm font-normal ${i === 1 ? "text-gris" : "text-[#C9D6D0]"}`}> /mes + IVA</span>
+                  </p>
+                  <p className={`text-sm ${i === 1 ? "text-gris" : "text-[#C9D6D0]"}`}>Hasta {p.hasta} propiedades</p>
+                </div>
+              ))}
             </div>
-            <div className="rounded-2xl bg-white p-6 text-tinta md:min-w-72">
-              <p className="text-sm text-gris">Por propiedad al mes</p>
-              <p className="font-display text-5xl font-bold">$110</p>
-              <p className="text-sm text-gris">MXN + IVA</p>
-              <p className="mt-3 border-t border-borde-suave pt-3 text-sm">
-                10 propiedades = <strong>$1,100</strong> al mes
-              </p>
-              <Link href="/registro" className="mt-4 flex min-h-12 items-center justify-center rounded-xl bg-verde font-bold text-white">
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-[#C9D6D0]">✓ Subes de plan cuando creces · ✓ Sin plazos forzosos · ✓ ¿Más de {MAS_DE}? Plan a la medida</p>
+              <Link href="/registro" className="flex min-h-12 items-center rounded-xl bg-verde px-6 font-bold text-white">
                 Empezar gratis
               </Link>
             </div>

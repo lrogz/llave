@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sesionConOrg } from "@/lib/sesion";
-import { sincronizarCantidad } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
 
@@ -76,7 +75,6 @@ export async function borrarPropiedad(form: FormData) {
   if (txt(form, "confirmar", 120).toLowerCase() !== p.nombre.toLowerCase()) throw new Error("Escribe el nombre exacto de la propiedad para confirmar.");
   const { error } = await supabase.from("propiedades").delete().eq("id", p.id);
   if (error) throw new Error("Solo la dueña de la cuenta o una administradora puede borrar propiedades.");
-  await sincronizarCantidad(createAdminClient(), org.id).catch(() => {});
   revalidatePath("/");
   redirect("/");
 }

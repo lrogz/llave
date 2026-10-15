@@ -71,6 +71,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    19. `supabase/migrations/20261015090000_inpc_aumentos.sql`
    20. `supabase/migrations/20261015100000_cobro_automatico.sql`
    21. `supabase/migrations/20261015110000_reparto_pagos.sql`
+   22. `supabase/migrations/20261015120000_planes_por_nivel.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -121,15 +122,16 @@ Mientras tanto se puede entrar con **correo y contraseña** (Ajustes › Tu cont
 
 ### 5. Cobro de la suscripción con Stripe (opcional)
 
-Precio: **$110 MXN por propiedad al mes**, gratis hasta 3 propiedades, 30 días de prueba sin límite.
+Planes (se cambian en `src/lib/planes.ts`): **Gratis** hasta 2 propiedades · **Inicial** $890/mes hasta 10 · **Profesional** $1,890/mes hasta 30 · **Agencia** $3,890/mes hasta 80 (más IVA). Más de 80: plan a la medida.
 
 1. Crea tu cuenta en [stripe.com](https://stripe.com) (México) y activa los pagos.
-2. Products › Add product "Black Key Pro" › precio **recurrente mensual de $110 MXN** (o $127.60 con IVA incluido), "por unidad". Copia el `price_…`.
+2. Products › crea 3 productos (Inicial, Profesional, Agencia), cada uno con un precio **recurrente mensual** fijo ($890, $1,890 y $3,890 MXN + IVA). Copia cada `price_…`.
 3. Developers › API keys › copia la **Secret key** (`sk_live_…`).
 4. Developers › Webhooks › Add endpoint: `https://TU-DIRECCION/api/stripe/webhook` con los eventos
    `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. Copia el **Signing secret** (`whsec_…`).
 5. Settings › Billing › Customer portal: actívalo (para que cambien tarjeta, vean facturas o cancelen) y en cancelaciones elige **"al final del periodo de facturación"** (así lo dicen los términos).
-6. En Vercel agrega `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` y Redeploy.
+6. En Vercel agrega `STRIPE_SECRET_KEY`, `STRIPE_PRICE_INICIAL`, `STRIPE_PRICE_PROFESIONAL`, `STRIPE_PRICE_AGENCIA`, `STRIPE_WEBHOOK_SECRET` y Redeploy.
+7. Customer portal › permite **cambiar de plan** entre esos 3 precios (opcional; también se cambia desde la app).
 
 Sin estas variables la app funciona igual; la pantalla Plan solo dice que los pagos no están conectados.
 

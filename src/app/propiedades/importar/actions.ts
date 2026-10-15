@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sesionConOrg } from "@/lib/sesion";
-import { estadoPlan, GRATIS_HASTA, puedeAgregar } from "@/lib/plan";
-import { sincronizarCantidad } from "@/lib/stripe";
+import { estadoPlan, puedeAgregar } from "@/lib/plan";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { convertir, MAX_FILAS, simplificar, type Celda, type Clave, type FilaImportada, type Mapeo } from "@/lib/importar";
 
@@ -53,9 +52,16 @@ export async function importarPropiedades(entrada: unknown[]): Promise<Resultado
     filas.push(f);
   }
 
-  // Plan gratis: hasta 3 propiedades (sin límite en la prueba o con plan activo).
-  if (filas.length && !puedeAgregar(await estadoPlan(supabase, org.id), filas.length)) {
-    return { creadas: 0, duenosNuevos: 0, omitidas, error: `El plan gratis incluye hasta ${GRATIS_HASTA} propiedades y este archivo trae ${filas.length}. Activa tu plan en "Plan" para importarlas todas.` };
+  // Límite del plan (gratis: 2 propiedades; cada plan de pago incluye hasta X).
+  const plan = await estadoPlan(supabase, org.id);
+  if (filas.length && !puedeAgregar(plan, filas.length)) {
+    const caben = Math.max(0, plan.limite - plan.propiedades);
+    return {
+      creadas: 0,
+      duenosNuevos: 0,
+      omitidas,
+      error: `${plan.plan ? `Tu plan ${plan.plan.nombre}` : "El plan gratis"} incluye hasta ${plan.limite} propiedades (te ${caben === 1 ? "cabe 1 más" : `caben ${caben} más`}) y este archivo trae ${filas.length}. Sube de plan en "Plan" para importarlas todas.`,
+    };
   }
 
   // Dueños: reutiliza los que ya existen (mismo nombre) y crea los nuevos de una vez.
@@ -92,7 +98,6 @@ export async function importarPropiedades(entrada: unknown[]): Promise<Resultado
     if (error) return { creadas: 0, duenosNuevos: nuevos.size, omitidas, error: "No pudimos guardar las propiedades." };
   }
 
-  await sincronizarCantidad(createAdminClient(), org.id).catch(() => {});
   revalidatePath("/");
   return { creadas: filas.length, duenosNuevos: nuevos.size, omitidas };
 }

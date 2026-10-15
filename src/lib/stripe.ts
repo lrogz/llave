@@ -1,12 +1,11 @@
 import "server-only";
 import crypto from "node:crypto";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Cobro de la suscripción con Stripe (API REST, sin SDK). Variables de servidor:
 //   STRIPE_SECRET_KEY      sk_live_… / sk_test_…
-//   STRIPE_PRICE_ID        price_… de $110 MXN mensual "por unidad" (cantidad = propiedades)
+//   STRIPE_PRICE_INICIAL / STRIPE_PRICE_PROFESIONAL / STRIPE_PRICE_AGENCIA  price_… mensual de cada plan
 //   STRIPE_WEBHOOK_SECRET  whsec_… del endpoint /api/stripe/webhook
-export const stripeConfigurado = () => Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID);
+export const stripeConfigurado = () => Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_INICIAL && process.env.STRIPE_PRICE_PROFESIONAL && process.env.STRIPE_PRICE_AGENCIA);
 
 const base = () => (process.env.STRIPE_URL ?? "https://api.stripe.com") + "/v1";
 
@@ -57,19 +56,4 @@ export function firmaValida(cuerpo: string, cabecera: string | null, secreto: st
     .filter((p) => p.startsWith("v1="))
     .map((p) => p.slice(3));
   return firmas.some((f) => f.length === esperada.length && crypto.timingSafeEqual(Buffer.from(f), Buffer.from(esperada)));
-}
-
-// Ajusta la cantidad cobrada al número de propiedades (sin prorratear: aplica desde el siguiente mes).
-export async function sincronizarCantidad(admin: SupabaseClient, orgId: string) {
-  if (!stripeConfigurado()) return;
-  const { data: o } = await admin.from("organizaciones").select("plan, stripe_subscription_id, propiedades_cobradas").eq("id", orgId).single();
-  if (o?.plan !== "pro" || !o.stripe_subscription_id) return;
-  const { count } = await admin.from("propiedades").select("id", { count: "exact", head: true }).eq("organizacion_id", orgId);
-  const n = Math.max(1, count ?? 0);
-  if (n === o.propiedades_cobradas) return;
-  const sub = await stripe<{ items: { data: { id: string }[] } }>("GET", `/subscriptions/${o.stripe_subscription_id}`);
-  const item = sub.items.data[0]?.id;
-  if (!item) return;
-  await stripe("POST", `/subscriptions/${o.stripe_subscription_id}`, { items: { 0: { id: item, quantity: n } }, proration_behavior: "none" });
-  await admin.from("organizaciones").update({ propiedades_cobradas: n }).eq("id", orgId);
 }
