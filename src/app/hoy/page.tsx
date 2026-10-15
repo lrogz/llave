@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { Cargando, Menu } from "@/components/Menu";
 import { ListaPendientes, NuevoPendiente, type Pendiente } from "@/components/Seguimiento";
 import { diasEntre, fechaConAnio, haceHoras, hoyMX, plantillas } from "@/lib/crm";
-import { QUIEN_PAGA, TIPOS_SERVICIO, etiqueta, formatoFecha, formatoFechaHora, linkWhatsApp, origen, pesos } from "@/lib/util";
+import { textoPaga, type Reparto, TIPOS_SERVICIO, etiqueta, formatoFecha, formatoFechaHora, linkWhatsApp, origen, pesos } from "@/lib/util";
 import { sesionConOrg } from "@/lib/sesion";
 import { estadoPlan, GRATIS_HASTA } from "@/lib/plan";
 import { FilaReporte, type ReporteFila } from "@/components/ReporteMensual";
@@ -93,7 +93,7 @@ async function Contenido() {
     supabase.from("cobros_renta").select("id", { count: "exact", head: true }).eq("estado", "por_confirmar"),
     supabase
       .from("recibos_servicio")
-      .select("id, vence, estado, servicios(tipo, quien_paga, propiedades(id, nombre))")
+      .select("id, vence, estado, servicios(tipo, quien_paga, reparto, propiedades(id, nombre))")
       .in("estado", ["pendiente", "vencido"])
       .lte("vence", hoyMX(3))
       .order("vence"),
@@ -108,7 +108,7 @@ async function Contenido() {
     id: string;
     vence: string;
     estado: string;
-    servicios: { tipo: string; quien_paga: string; propiedades: { id: string; nombre: string } | null } | null;
+    servicios: { tipo: string; quien_paga: string; reparto: Reparto | null; propiedades: { id: string; nombre: string } | null } | null;
   }[];
   const docsVencen = (docsQ.data ?? []) as unknown as {
     id: string;
@@ -266,7 +266,7 @@ async function Contenido() {
                   key={r.id}
                   href="/pagos#servicios"
                   titulo={`${etiqueta(TIPOS_SERVICIO, r.servicios?.tipo)} · ${r.servicios?.propiedades?.nombre ?? ""}`}
-                  detalle={`${r.estado === "vencido" ? "Venció" : "Vence"} ${formatoFecha(r.vence)} · paga ${etiqueta(QUIEN_PAGA, r.servicios?.quien_paga).toLowerCase()}`}
+                  detalle={`${r.estado === "vencido" ? "Venció" : "Vence"} ${formatoFecha(r.vence)} · paga ${textoPaga(r.servicios?.quien_paga, r.servicios?.reparto).toLowerCase()}`}
                   urgente={r.estado === "vencido"}
                 />
               ))}

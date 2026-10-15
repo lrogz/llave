@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { Logo } from "@/components/Logo";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { BUCKET, CATEGORIAS, QUIEN_PAGA, etiqueta, formatoFecha, formatoFechaHora, pesos } from "@/lib/datos";
+import { BUCKET, CATEGORIAS, textoPaga, type Reparto, etiqueta, formatoFecha, formatoFechaHora, pesos } from "@/lib/datos";
 import { DecisionForm } from "./DecisionForm";
 
 export const metadata: Metadata = { title: "Aprobar cotización · Black Key" };
@@ -41,6 +41,7 @@ type Datos = {
       descripcion: string | null;
       categoria: string | null;
       quien_paga: string | null;
+      reparto: Reparto | null;
       folio: number;
       propiedades: { nombre: string } | null;
     } | null;
@@ -54,7 +55,7 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
   const { data } = await admin
     .from("aprobaciones")
     .select(
-      "id, decision, comentario, duenos(nombre), organizaciones(nombre), cotizaciones(id, ticket_id, monto, incluye_materiales, garantia_dias, fechas_disponibles, visita_at, notas, archivo_path, proveedores(nombre, calificacion, trabajos), tickets(titulo, descripcion, categoria, quien_paga, folio, propiedades(nombre)))",
+      "id, decision, comentario, duenos(nombre), organizaciones(nombre), cotizaciones(id, ticket_id, monto, incluye_materiales, garantia_dias, fechas_disponibles, visita_at, notas, archivo_path, proveedores(nombre, calificacion, trabajos), tickets(titulo, descripcion, categoria, quien_paga, reparto, folio, propiedades(nombre)))",
     )
     .eq("token", token)
     .maybeSingle();
@@ -137,7 +138,7 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
           {ticket.quien_paga && (
             <>
               <dt className="text-gris">Paga</dt>
-              <dd className="text-right font-semibold">{etiqueta(QUIEN_PAGA, ticket.quien_paga)}</dd>
+              <dd className="text-right font-semibold">{textoPaga(ticket.quien_paga, ticket.reparto)}</dd>
             </>
           )}
         </dl>

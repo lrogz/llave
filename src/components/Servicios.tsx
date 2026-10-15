@@ -1,7 +1,8 @@
 import { Boton } from "@/components/Boton";
 import { campo } from "@/components/Seguimiento";
 import { agregarServicio, quitarServicio } from "@/app/servicios/actions";
-import { QUIEN_PAGA, TIPOS_SERVICIO, etiqueta } from "@/lib/datos";
+import { TIPOS_SERVICIO, etiqueta, textoPaga, type Reparto } from "@/lib/datos";
+import { QuienPaga } from "./QuienPaga";
 import type { createClient } from "@/lib/supabase/server";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -15,7 +16,7 @@ const PERIODOS = [
 export async function SeccionServicios({ db, propiedadId }: { db: Db; propiedadId: string }) {
   const { data } = await db
     .from("servicios")
-    .select("id, tipo, compania, numero_servicio, quien_paga, dia_vencimiento, periodicidad, recibos_servicio(estado, periodo)")
+    .select("id, tipo, compania, numero_servicio, quien_paga, reparto, dia_vencimiento, periodicidad, recibos_servicio(estado, periodo)")
     .eq("propiedad_id", propiedadId)
     .order("tipo");
   const servicios = (data ?? []) as {
@@ -24,6 +25,7 @@ export async function SeccionServicios({ db, propiedadId }: { db: Db; propiedadI
     compania: string | null;
     numero_servicio: string | null;
     quien_paga: string;
+    reparto: Reparto | null;
     dia_vencimiento: number | null;
     periodicidad: string;
     recibos_servicio: { estado: string; periodo: string }[];
@@ -46,7 +48,7 @@ export async function SeccionServicios({ db, propiedadId }: { db: Db; propiedadI
                     {s.compania ? ` · ${s.compania}` : ""}
                   </span>
                   <span className="text-xs text-gris">
-                    Paga: {etiqueta(QUIEN_PAGA, s.quien_paga)} · {etiqueta(PERIODOS, s.periodicidad).toLowerCase()}
+                    Paga: {textoPaga(s.quien_paga, s.reparto)} · {etiqueta(PERIODOS, s.periodicidad).toLowerCase()}
                     {s.dia_vencimiento ? `, día ${s.dia_vencimiento}` : ""}
                     {s.numero_servicio ? ` · No. ${s.numero_servicio}` : ""}
                   </span>
@@ -84,13 +86,7 @@ export async function SeccionServicios({ db, propiedadId }: { db: Db; propiedadI
           </select>
           <input name="compania" placeholder="Compañía (CFE…)" aria-label="Compañía" className={campo} />
           <input name="numero_servicio" placeholder="No. de servicio" aria-label="Número de servicio" className={campo} />
-          <select name="quien_paga" defaultValue="inquilino" aria-label="Quién paga" className={campo}>
-            {QUIEN_PAGA.map(([v, t]) => (
-              <option key={v} value={v}>
-                Paga: {t}
-              </option>
-            ))}
-          </select>
+          <QuienPaga defaultValue="inquilino" etiqueta={null} prefijo="Paga: " className="col-span-full" />
           <select name="periodicidad" aria-label="Cada cuándo" className={campo}>
             {PERIODOS.map(([v, t]) => (
               <option key={v} value={v}>

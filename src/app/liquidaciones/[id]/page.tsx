@@ -8,7 +8,7 @@ import { Cargando, Menu } from "@/components/Menu";
 import { campo } from "@/components/Seguimiento";
 import { formatoClabe } from "@/lib/clabe";
 import { hoyMX, plantillas } from "@/lib/crm";
-import { BUCKET, formatoFecha, linkWhatsApp, origen, pesos } from "@/lib/util";
+import { BUCKET, formatoFecha, linkWhatsApp, origen, pesos, textoPaga } from "@/lib/util";
 import { armarReporte, inicioDeMes, mesAnterior, mesTexto, periodoALiquidar, siguienteMes } from "@/lib/reporte";
 import { sesionConOrg } from "@/lib/sesion";
 import { agregarMovimiento, borrarMovimiento, deshacerLiquidacion, marcarLiquidada } from "../actions";
@@ -51,7 +51,7 @@ async function Contenido({ params, searchParams }: Params) {
   const comprobante = liq?.comprobante_path ? (await supabase.storage.from(BUCKET).createSignedUrl(liq.comprobante_path, 3600)).data?.signedUrl : null;
   const falta = t.rentaEsperada - t.rentaCobrada;
   const cobradas = rep.cobros.filter((c) => c.estado === "pagado");
-  const mantenimiento = rep.resueltos.filter((x) => x.quien_paga === "dueno" && x.monto);
+  const mantenimiento = rep.resueltos.filter((x) => x.aCargoDueno > 0);
   const q = (p: string) => `/liquidaciones/${dueno.id}?mes=${p.slice(0, 7)}`;
   const datosTransferencia = [dueno.nombre, dueno.banco, dueno.clabe ? `CLABE ${dueno.clabe}` : null, `Monto ${pesos.format(Math.max(t.saldo, 0))}`, `Concepto: Liquidación ${mesTxt}`].filter(Boolean).join("\n");
 
@@ -144,7 +144,10 @@ async function Contenido({ params, searchParams }: Params) {
                           {x.proveedor ? ` · ${x.proveedor}` : ""}
                         </span>
                       </Link>
-                      <span className="font-mono">−{pesos.format(Number(x.monto))}</span>
+                      <span className="text-right font-mono">
+                        −{pesos.format(x.aCargoDueno)}
+                        {x.quien_paga === "compartido" && <span className="block font-sans text-xs text-gris">{textoPaga(x.quien_paga, x.reparto)}</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>

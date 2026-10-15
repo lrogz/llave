@@ -19,7 +19,7 @@ async function Contenido() {
   const { supabase, org } = await sesionConOrg();
   const hoy = hoyMX();
   const [{ data }, { data: props }] = await Promise.all([
-    supabase.from("mantenimientos").select("id, titulo, cada_meses, proxima, quien_paga, activo, propiedades(id, nombre)").order("activo", { ascending: false }).order("proxima"),
+    supabase.from("mantenimientos").select("id, titulo, cada_meses, proxima, quien_paga, reparto, activo, propiedades(id, nombre)").order("activo", { ascending: false }).order("proxima"),
     supabase.from("propiedades").select("id, nombre").order("nombre"),
   ]);
   const filas = (data ?? []) as unknown as FilaMant[];

@@ -2,13 +2,12 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { BUCKET, MAX_ENVIO, QUIEN_PAGA, TIPOS_SERVICIO, extension } from "@/lib/datos";
+import { BUCKET, MAX_ENVIO, TIPOS_SERVICIO, extension, leerPaga } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
 
 const txt = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
 const esUuid = (s: string) => /^[0-9a-f-]{36}$/i.test(s);
 const TIPOS = new Set<string>(TIPOS_SERVICIO.map(([v]) => v));
-const PAGAN = new Set<string>(QUIEN_PAGA.map(([v]) => v));
 
 function refrescar(propiedadId?: string) {
   if (propiedadId) revalidatePath(`/propiedades/${propiedadId}`);
@@ -23,7 +22,7 @@ export async function agregarServicio(f: FormData) {
   const { data: prop } = await supabase.from("propiedades").select("id").eq("id", propiedadId).maybeSingle();
   if (!prop) return;
   const tipo = txt(f, "tipo", 30);
-  const quien = txt(f, "quien_paga", 20);
+  const paga = leerPaga(f, "inquilino");
   const per = txt(f, "periodicidad", 12);
   const dia = Math.round(Number(txt(f, "dia_vencimiento", 2)));
   await supabase.from("servicios").insert({
@@ -32,7 +31,8 @@ export async function agregarServicio(f: FormData) {
     tipo: TIPOS.has(tipo) ? tipo : "otro",
     compania: txt(f, "compania", 80) || null,
     numero_servicio: txt(f, "numero_servicio", 40) || null,
-    quien_paga: PAGAN.has(quien) ? quien : "inquilino",
+    quien_paga: paga.error ? "inquilino" : paga.quien_paga,
+    ...(paga.reparto && !paga.error ? { reparto: paga.reparto } : {}),
     periodicidad: ["mensual", "bimestral", "anual"].includes(per) ? per : "mensual",
     dia_vencimiento: dia >= 1 && dia <= 31 ? dia : null,
   });

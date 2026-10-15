@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { parteDe, type Reparto } from "./datos";
 
 // Reporte mensual del dueño: se arma en vivo con los datos del mes.
 
@@ -25,7 +26,9 @@ export type Trabajo = {
   propiedad: string;
   resuelto_at: string | null;
   quien_paga: string | null;
+  reparto: Reparto | null;
   monto: number | null;
+  aCargoDueno: number; // lo que le toca al dueño (todo, nada o su % si es compartido)
   proveedor: string | null;
   antes: Foto[];
   despues: Foto[];
@@ -53,6 +56,7 @@ type TicketFila = {
   estado: string;
   resuelto_at: string | null;
   quien_paga: string | null;
+  reparto: Reparto | null;
   propiedad_id: string;
   ticket_media: { storage_path: string; tipo: string; momento: string }[];
   cotizaciones: { monto: number | null; estado: string; proveedores: { nombre: string } | null }[];
@@ -90,7 +94,7 @@ export async function armarReporte(db: SupabaseClient, duenoId: string, periodo:
       .lt("periodo", fin),
     db
       .from("tickets")
-      .select("id, folio, titulo, estado, resuelto_at, quien_paga, propiedad_id, ticket_media(storage_path, tipo, momento), cotizaciones(monto, estado, proveedores(nombre))")
+      .select("id, folio, titulo, estado, resuelto_at, quien_paga, reparto, propiedad_id, ticket_media(storage_path, tipo, momento), cotizaciones(monto, estado, proveedores(nombre))")
       .in("propiedad_id", ids)
       .eq("estado", "resuelto")
       .gte("resuelto_at", `${periodo}T06:00:00Z`)
@@ -98,7 +102,7 @@ export async function armarReporte(db: SupabaseClient, duenoId: string, periodo:
       .order("resuelto_at"),
     db
       .from("tickets")
-      .select("id, folio, titulo, estado, resuelto_at, quien_paga, propiedad_id, ticket_media(storage_path, tipo, momento), cotizaciones(monto, estado, proveedores(nombre))")
+      .select("id, folio, titulo, estado, resuelto_at, quien_paga, reparto, propiedad_id, ticket_media(storage_path, tipo, momento), cotizaciones(monto, estado, proveedores(nombre))")
       .in("propiedad_id", ids)
       .not("estado", "in", "(resuelto,cancelado)")
       .order("created_at"),
@@ -115,7 +119,9 @@ export async function armarReporte(db: SupabaseClient, duenoId: string, periodo:
       propiedad: nombre.get(t.propiedad_id) ?? "",
       resuelto_at: t.resuelto_at,
       quien_paga: t.quien_paga,
+      reparto: t.reparto,
       monto: elegida?.monto ?? null,
+      aCargoDueno: Math.round(Number(elegida?.monto ?? 0) * parteDe(t.quien_paga, t.reparto, "dueno") * 100) / 100,
       proveedor: elegida?.proveedores?.nombre ?? null,
       antes: t.ticket_media.filter((m) => m.momento !== "despues" && m.tipo === "foto").slice(0, 2).map((m) => ({ path: m.storage_path, tipo: m.tipo, momento: m.momento })),
       despues: t.ticket_media.filter((m) => m.momento === "despues").slice(0, 2).map((m) => ({ path: m.storage_path, tipo: m.tipo, momento: m.momento })),
@@ -143,7 +149,7 @@ export async function armarReporte(db: SupabaseClient, duenoId: string, periodo:
   const rentaEsperada = cobros.reduce((s, c) => s + c.monto, 0);
   const rentaCobrada = cobros.filter((c) => c.estado === "pagado").reduce((s, c) => s + c.monto, 0);
   const comision = Math.round(rentaCobrada * Number(dueno.comision_pct ?? 0)) / 100;
-  const gastos = resueltos.filter((t) => t.quien_paga === "dueno").reduce((s, t) => s + Number(t.monto ?? 0), 0);
+  const gastos = resueltos.reduce((s, t) => s + t.aCargoDueno, 0);
 
   return {
     dueno,

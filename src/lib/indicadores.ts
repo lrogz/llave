@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hoyMX } from "./crm";
 import { inicioDeMes, mesAnterior, siguienteMes } from "./reporte";
+import { parteDe, type Reparto } from "./datos";
 
 // Indicadores de los últimos 12 meses (incluye el mes actual), calculados en vivo.
 
@@ -64,12 +65,12 @@ export async function calcularIndicadores(db: SupabaseClient, opciones: { duenoI
   const [cQ, cobQ, tkQ, movQ] = await Promise.all([
     db.from("contratos").select("propiedad_id, inquilino_id, inicio, fin, activo").in("propiedad_id", ids),
     db.from("cobros_renta").select("monto, recargo, estado, vence, pagado_at, periodo, contratos!inner(propiedad_id, inquilino_id)").in("contratos.propiedad_id", ids).gte("periodo", desde),
-    db.from("tickets").select("propiedad_id, estado, quien_paga, resuelto_at, created_at, cotizaciones(monto, estado)").in("propiedad_id", ids).gte("created_at", `${desde}T06:00:00Z`),
+    db.from("tickets").select("propiedad_id, estado, quien_paga, reparto, resuelto_at, created_at, cotizaciones(monto, estado)").in("propiedad_id", ids).gte("created_at", `${desde}T06:00:00Z`),
     db.from("movimientos_dueno").select("propiedad_id, tipo, monto").in("propiedad_id", ids).gte("periodo", desde),
   ]);
   const contratos = (cQ.data ?? []) as Contrato[];
   const cobros = (cobQ.data ?? []) as unknown as { monto: number; recargo: number; estado: string; vence: string; pagado_at: string | null; periodo: string; contratos: { propiedad_id: string; inquilino_id: string } }[];
-  const tickets = (tkQ.data ?? []) as unknown as { propiedad_id: string; estado: string; quien_paga: string | null; resuelto_at: string | null; cotizaciones: { monto: number | null; estado: string }[] }[];
+  const tickets = (tkQ.data ?? []) as unknown as { propiedad_id: string; estado: string; quien_paga: string | null; reparto: Reparto | null; resuelto_at: string | null; cotizaciones: { monto: number | null; estado: string }[] }[];
   const movs = (movQ.error ? [] : (movQ.data ?? [])) as { propiedad_id: string; tipo: string; monto: number }[];
 
   const monto = (c: { monto: number; recargo: number }) => Number(c.monto) + Number(c.recargo ?? 0);
@@ -96,8 +97,8 @@ export async function calcularIndicadores(db: SupabaseClient, opciones: { duenoI
     const propios = cobros.filter((c) => c.contratos.propiedad_id === p.id);
     const ingresos = propios.filter((c) => c.estado === "pagado").reduce((s, c) => s + monto(c), 0);
     const mantenimiento = tickets
-      .filter((x) => x.propiedad_id === p.id && x.estado === "resuelto" && x.quien_paga === "dueno")
-      .reduce((s, x) => s + Number(x.cotizaciones.find((c) => c.estado === "aprobada")?.monto ?? 0), 0);
+      .filter((x) => x.propiedad_id === p.id && x.estado === "resuelto")
+      .reduce((s, x) => s + Number(x.cotizaciones.find((c) => c.estado === "aprobada")?.monto ?? 0) * parteDe(x.quien_paga, x.reparto, "dueno"), 0);
     const cargos = movs.filter((m) => m.propiedad_id === p.id).reduce((s, m) => s + (m.tipo === "cargo" ? Number(m.monto) : -Number(m.monto)), 0);
     const diasVacia = diasPeriodo - ocupados;
     return {

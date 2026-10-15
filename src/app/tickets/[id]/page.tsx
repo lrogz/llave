@@ -14,7 +14,8 @@ import {
   COLOR_ESTADO,
   DISPONIBILIDAD,
   ESTADOS_TICKET,
-  QUIEN_PAGA,
+  textoPaga,
+  type Reparto,
   etiqueta,
   formatoFecha,
   formatoFechaHora,
@@ -23,6 +24,7 @@ import {
   pesos,
 } from "@/lib/util";
 import { AgendarCita } from "@/components/AgendarCita";
+import { QuienPaga } from "@/components/QuienPaga";
 import { BotonCopiar } from "@/components/BotonCopiar";
 import { fechaCita, horarioValido, horariosLibres } from "@/lib/agenda";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -59,6 +61,7 @@ type Ticket = {
   urgencia: string;
   estado: string;
   quien_paga: string | null;
+  reparto: Reparto | null;
   disponibilidad: string[];
   canal_origen: string;
   token_publico: string;
@@ -95,7 +98,7 @@ async function Contenido({ params, searchParams }: Props) {
   const { data: t } = await supabase
     .from("tickets")
     .select(
-      "id, folio, titulo, descripcion, categoria, urgencia, estado, quien_paga, disponibilidad, canal_origen, token_publico, calificacion, created_at, resuelto_at, propiedades(id, nombre, direccion, colonia, duenos(nombre, telefono)), inquilinos(nombre, telefono)",
+      "id, folio, titulo, descripcion, categoria, urgencia, estado, quien_paga, reparto, disponibilidad, canal_origen, token_publico, calificacion, created_at, resuelto_at, propiedades(id, nombre, direccion, colonia, duenos(nombre, telefono)), inquilinos(nombre, telefono)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -198,7 +201,7 @@ async function Contenido({ params, searchParams }: Props) {
           <div className="flex min-w-52 flex-col gap-1 rounded-xl bg-white px-4 py-3">
             <span className="text-xs font-semibold text-gris">Dueño</span>
             <span className="font-bold">{dueno?.nombre ?? "Sin registrar"}</span>
-            {ticket.quien_paga && <span className="text-xs text-gris">Paga: {etiqueta(QUIEN_PAGA, ticket.quien_paga)}</span>}
+            {ticket.quien_paga && <span className="text-xs text-gris">Paga: {textoPaga(ticket.quien_paga, ticket.reparto)}</span>}
           </div>
         </header>
 
@@ -408,16 +411,7 @@ async function Contenido({ params, searchParams }: Props) {
                           <form className="mt-3 flex flex-col gap-2">
                             <input type="hidden" name="ticket_id" value={ticket.id} />
                             <input type="hidden" name="cotizacion_id" value={c.id} />
-                            <label className="flex flex-col gap-1 text-sm font-semibold">
-                              ¿Quién paga?
-                              <select name="quien_paga" defaultValue={ticket.quien_paga ?? "dueno"} className="min-h-11 rounded-xl border border-borde bg-white px-3 font-normal">
-                                {QUIEN_PAGA.map(([v, t]) => (
-                                  <option key={v} value={v}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                            <QuienPaga defaultValue={ticket.quien_paga ?? "dueno"} reparto={ticket.reparto} etiqueta="¿Quién paga?" />
                             {!dueno && (
                               <>
                                 <Campo nombre="dueno_nombre" etiqueta="Nombre del dueño" placeholder="Marta Ríos" />

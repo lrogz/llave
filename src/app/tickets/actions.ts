@@ -6,11 +6,10 @@ import { sesionConOrg } from "@/lib/sesion";
 import { avisarAprobado } from "@/lib/citas";
 import { avisarProveedorPush } from "@/lib/push";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { BUCKET, QUIEN_PAGA, TIPOS_PERMITIDOS, extension } from "@/lib/datos";
+import { BUCKET, TIPOS_PERMITIDOS, extension, leerPaga } from "@/lib/datos";
 
 // Vercel acepta hasta ~4.5 MB por envío; las fotos se reducen en el navegador antes de subir.
 const MAX_COTIZACION = 4 * 1024 * 1024;
-const quienPagaValido = new Set<string>(QUIEN_PAGA.map(([v]) => v));
 
 function texto(form: FormData, campo: string, max = 200) {
   return String(form.get(campo) ?? "").trim().slice(0, max);
@@ -154,7 +153,7 @@ export async function subirCotizacion(form: FormData) {
 export async function enviarAlDueno(form: FormData) {
   const { supabase, ticket } = await ticketDeLaOrg(texto(form, "ticket_id"));
   const cotizacionId = texto(form, "cotizacion_id");
-  const quienPaga = texto(form, "quien_paga");
+  const paga = leerPaga(form, null);
 
   const { data: propiedad } = await supabase
     .from("propiedades")
@@ -198,7 +197,7 @@ export async function enviarAlDueno(form: FormData) {
 
   await supabase
     .from("tickets")
-    .update({ estado: "aprobacion", quien_paga: quienPagaValido.has(quienPaga) ? quienPaga : null })
+    .update({ estado: "aprobacion", quien_paga: paga.quien_paga, ...(paga.quien_paga ? { reparto: paga.reparto } : {}) })
     .eq("id", ticket.id);
 
   revalidatePath(`/tickets/${ticket.id}`);
@@ -208,7 +207,7 @@ export async function enviarAlDueno(form: FormData) {
 export async function aprobarYo(form: FormData) {
   const { supabase, ticket } = await ticketDeLaOrg(texto(form, "ticket_id"));
   const cotizacionId = texto(form, "cotizacion_id");
-  const quienPaga = texto(form, "quien_paga");
+  const paga = leerPaga(form, null);
 
   const { data: cot } = await supabase
     .from("cotizaciones")
@@ -221,7 +220,7 @@ export async function aprobarYo(form: FormData) {
   await supabase.from("cotizaciones").update({ estado: "aprobada" }).eq("id", cot.id);
   await supabase
     .from("tickets")
-    .update({ estado: "en_proceso", quien_paga: quienPagaValido.has(quienPaga) ? quienPaga : null })
+    .update({ estado: "en_proceso", quien_paga: paga.quien_paga, ...(paga.quien_paga ? { reparto: paga.reparto } : {}) })
     .eq("id", ticket.id);
   await avisarAprobado(createAdminClient(), cot.id);
 

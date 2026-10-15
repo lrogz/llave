@@ -29,7 +29,7 @@ export function sumarMeses(fecha: string, meses: number) {
   return `${ny}-${String(nm).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
 }
 
-export type Mantenimiento = { id: string; organizacion_id: string; propiedad_id: string; titulo: string; categoria: string | null; cada_meses: number; proxima: string; quien_paga: string | null; notas: string | null };
+export type Mantenimiento = { id: string; organizacion_id: string; propiedad_id: string; titulo: string; categoria: string | null; cada_meses: number; proxima: string; quien_paga: string | null; reparto?: unknown; notas: string | null };
 
 // Crea el ticket de una tarea y recorre su próxima fecha (sirve con el cliente de la administradora o con la llave de servicio).
 export async function crearTicketMantenimiento(db: SupabaseClient, m: Mantenimiento) {
@@ -42,6 +42,7 @@ export async function crearTicketMantenimiento(db: SupabaseClient, m: Mantenimie
       descripcion: [`Mantenimiento preventivo programado cada ${m.cada_meses} ${m.cada_meses === 1 ? "mes" : "meses"} (fecha: ${m.proxima}).`, m.notas].filter(Boolean).join("\n"),
       categoria: m.categoria,
       quien_paga: m.quien_paga,
+      reparto: m.reparto ?? null,
       urgencia: "baja",
       canal_origen: "panel",
     })
@@ -59,7 +60,7 @@ export async function crearTicketMantenimiento(db: SupabaseClient, m: Mantenimie
 export async function generarMantenimientos(db: SupabaseClient, orgId: string) {
   const { data, error } = await db
     .from("mantenimientos")
-    .select("id, organizacion_id, propiedad_id, titulo, categoria, cada_meses, proxima, quien_paga, notas")
+    .select("id, organizacion_id, propiedad_id, titulo, categoria, cada_meses, proxima, quien_paga, reparto, notas")
     .eq("organizacion_id", orgId)
     .eq("activo", true)
     .lte("proxima", fechaMX(DIAS_ANTES));

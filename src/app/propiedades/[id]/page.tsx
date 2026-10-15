@@ -325,7 +325,7 @@ async function SeccionEntregas({ db, propiedadId }: { db: Db; propiedadId: strin
 }
 
 async function SeccionMantenimiento({ db, propiedadId }: { db: Db; propiedadId: string }) {
-  const { data, error } = await db.from("mantenimientos").select("id, titulo, cada_meses, proxima, quien_paga, activo, propiedades(id, nombre)").eq("propiedad_id", propiedadId).order("proxima");
+  const { data, error } = await db.from("mantenimientos").select("id, titulo, cada_meses, proxima, quien_paga, reparto, activo, propiedades(id, nombre)").eq("propiedad_id", propiedadId).order("proxima");
   if (error) return null;
   return (
     <section aria-label="Mantenimiento preventivo" className="flex flex-col gap-3 rounded-2xl bg-white p-5 print:hidden">

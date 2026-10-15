@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { diasEntre, hoyMX, primerNombre } from "./crm";
 import { correoConfigurado, enviarCorreos, plantilla, type Correo } from "./correo";
-import { TIPOS_SERVICIO, etiqueta, formatoFecha, pesos } from "./datos";
+import { TIPOS_SERVICIO, etiqueta, formatoFecha, parteDe, pesos, type Reparto } from "./datos";
 import { inicioDeMes, mesAnterior, mesTexto } from "./reporte";
 import { generarMantenimientos } from "./mantenimiento";
 import { enMX, fechaCita } from "./agenda";
@@ -165,7 +165,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
   if (activo("servicios")) {
     const { data: recibos } = await db
       .from("recibos_servicio")
-      .select("id, vence, monto, servicios(tipo, compania, numero_servicio, quien_paga, propiedades(id, nombre, duenos(nombre, email, telefono), contratos(activo, inquilinos(nombre, email, telefono))))")
+      .select("id, vence, monto, servicios(tipo, compania, numero_servicio, quien_paga, reparto, propiedades(id, nombre, duenos(nombre, email, telefono), contratos(activo, inquilinos(nombre, email, telefono))))")
       .eq("organizacion_id", org.id)
       .eq("estado", "pendiente")
       .eq("vence", hoyMX(3));
@@ -178,24 +178,36 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
         compania: string | null;
         numero_servicio: string | null;
         quien_paga: string;
+        reparto: Reparto | null;
         propiedades: { nombre: string; duenos: { nombre: string; email: string | null; telefono: string | null } | null; contratos: { activo: boolean; inquilinos: { nombre: string; email: string | null; telefono: string | null } | null }[] } | null;
       } | null;
     }[]) {
       const s = r.servicios;
       const p = s?.propiedades;
-      const quien = s?.quien_paga === "dueno" ? p?.duenos : s?.quien_paga === "inquilino" ? p?.contratos.find((x) => x.activo)?.inquilinos : null;
-      if (!s || !p || !quien) continue;
+      // A quien le toca pagar; si es compartido, a dueño e inquilino con su parte.
+      const dueno = p?.duenos;
+      const inquilino = p?.contratos.find((x) => x.activo)?.inquilinos;
+      const quienes = [
+        { persona: dueno, parte: parteDe(s?.quien_paga, s?.reparto, "dueno"), rol: "dueno" },
+        { persona: inquilino, parte: parteDe(s?.quien_paga, s?.reparto, "inquilino"), rol: "inquilino" },
+      ].filter((x) => x.persona && x.parte > 0);
+      if (!s || !p) continue;
       const servicio = etiqueta(TIPOS_SERVICIO, s.tipo);
-      agregar(`servicio:${r.id}`, "servicios", quien.email, () =>
-        correo(quien.email!, `${servicio} de ${p.nombre} vence el ${formatoFecha(r.vence)}`, plantilla({
-          org: org.nombre,
-          titulo: `${primerNombre(quien.nombre)}, recuerda pagar ${servicio.toLowerCase()}`,
-          parrafos: [
-            `${servicio}${s.compania ? ` (${s.compania})` : ""} de ${p.nombre} vence el ${formatoFecha(r.vence)}${r.monto != null ? ` por ${pesos.format(r.monto)}` : ""}.`,
-            s.numero_servicio ? `Número de servicio: ${s.numero_servicio}.` : "",
-            "Cuando lo pagues, responde a este correo con tu comprobante.",
-          ].filter(Boolean),
-        })), quien.telefono, () => ({ plantilla: "bk_servicio", variables: [primerNombre(quien.nombre), org.nombre, `${servicio}${s.compania ? ` (${s.compania})` : ""}`, p.nombre, formatoFecha(r.vence)] }));
+      for (const { persona: quien, parte, rol } of quienes) {
+        if (!quien) continue;
+        const monto = r.monto != null ? Number(r.monto) * parte : null;
+        const tuParte = parte < 1 ? ` (tu parte: ${Math.round(parte * 100)}%${monto != null ? `, ${pesos.format(monto)}` : ""})` : "";
+        agregar(`servicio:${r.id}${parte < 1 ? `:${rol}` : ""}`, "servicios", quien.email, () =>
+          correo(quien.email!, `${servicio} de ${p.nombre} vence el ${formatoFecha(r.vence)}`, plantilla({
+            org: org.nombre,
+            titulo: `${primerNombre(quien.nombre)}, recuerda pagar ${servicio.toLowerCase()}`,
+            parrafos: [
+              `${servicio}${s.compania ? ` (${s.compania})` : ""} de ${p.nombre} vence el ${formatoFecha(r.vence)}${r.monto != null ? ` por ${pesos.format(r.monto)}` : ""}${tuParte}.`,
+              s.numero_servicio ? `Número de servicio: ${s.numero_servicio}.` : "",
+              "Cuando lo pagues, responde a este correo con tu comprobante.",
+            ].filter(Boolean),
+          })), quien.telefono, () => ({ plantilla: "bk_servicio", variables: [primerNombre(quien.nombre), org.nombre, `${servicio}${s.compania ? ` (${s.compania})` : ""}${tuParte}`, p.nombre, formatoFecha(r.vence)] }));
+      }
     }
   }
 

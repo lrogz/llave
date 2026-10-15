@@ -5,7 +5,7 @@ import { Boton } from "@/components/Boton";
 import { Cargando, Menu } from "@/components/Menu";
 import { campo } from "@/components/Seguimiento";
 import { hoyMX, plantillas } from "@/lib/crm";
-import { BUCKET, QUIEN_PAGA, TIPOS_SERVICIO, etiqueta, formatoFecha, linkWhatsApp, origen, pesos } from "@/lib/util";
+import { BUCKET, textoPaga, type Reparto, TIPOS_SERVICIO, etiqueta, formatoFecha, linkWhatsApp, origen, pesos } from "@/lib/util";
 import { InputComprimido } from "@/components/InputComprimido";
 import { deshacerRecibo, pagarRecibo } from "../servicios/actions";
 import { inicioDeMes, mesAnterior, mesTexto, siguienteMes } from "@/lib/reporte";
@@ -52,6 +52,7 @@ type Recibo = {
     compania: string | null;
     numero_servicio: string | null;
     quien_paga: string;
+    reparto: Reparto | null;
     propiedades: { id: string; nombre: string } | null;
   } | null;
 };
@@ -92,7 +93,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
     supabase.from("contratos").select("id", { count: "exact", head: true }).eq("activo", true),
     supabase
       .from("recibos_servicio")
-      .select("id, monto, vence, estado, pagado_at, comprobante_path, servicios(tipo, compania, numero_servicio, quien_paga, propiedades(id, nombre))")
+      .select("id, monto, vence, estado, pagado_at, comprobante_path, servicios(tipo, compania, numero_servicio, quien_paga, reparto, propiedades(id, nombre))")
       .eq("periodo", periodo)
       .order("vence"),
   ]);
@@ -358,7 +359,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
                           {etiqueta(TIPOS_SERVICIO, s?.tipo)} · {s?.propiedades?.nombre}
                         </p>
                         <p className="text-gris">
-                          Paga: {etiqueta(QUIEN_PAGA, s?.quien_paga)}
+                          Paga: {textoPaga(s?.quien_paga, s?.reparto)}
                           {s?.compania ? ` · ${s.compania}` : ""}
                           {s?.numero_servicio ? ` · No. ${s.numero_servicio}` : ""}
                           {" · "}

@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Logo } from "@/components/Logo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { armarReporte, mesTexto, type Foto, type Trabajo } from "@/lib/reporte";
-import { BUCKET, COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, pesos } from "@/lib/datos";
+import { BUCKET, COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, pesos, textoPaga } from "@/lib/datos";
 import { origen } from "@/lib/util";
 
 export const metadata: Metadata = { title: "Reporte de tus propiedades · Black Key", robots: { index: false } };
@@ -216,7 +216,15 @@ function TrabajoCard({ t, url }: { t: Trabajo; url: Map<string | null, string | 
         {t.monto != null && (
           <span className="flex-none text-right text-sm">
             <span className="block font-mono font-bold">{pesos.format(t.monto)}</span>
-            <span className="text-xs text-gris">{t.quien_paga === "dueno" ? "a tu cargo" : t.quien_paga === "inquilino" ? "lo pagó el inquilino" : ""}</span>
+            <span className="text-xs text-gris">{t.quien_paga === "dueno"
+                ? "a tu cargo"
+                : t.quien_paga === "inquilino"
+                  ? "lo pagó el inquilino"
+                  : t.quien_paga === "compartido" && t.aCargoDueno > 0
+                    ? `${pesos.format(t.aCargoDueno)} a tu cargo (${textoPaga(t.quien_paga, t.reparto)})`
+                    : t.quien_paga
+                      ? textoPaga(t.quien_paga, t.reparto)
+                      : ""}</span>
           </span>
         )}
       </div>

@@ -60,7 +60,56 @@ export const QUIEN_PAGA = [
   ["inquilino", "Inquilino"],
   ["condominio", "Condominio"],
   ["administradora", "Administradora"],
+  ["otro", "Otro"],
+  ["compartido", "Compartido (por %)"],
 ] as const;
+
+// Quién paga en un reparto por porcentajes.
+export const PARTES_PAGO = [
+  ["dueno", "Dueño"],
+  ["inquilino", "Inquilino"],
+  ["condominio", "Condominio"],
+  ["administradora", "Administradora"],
+  ["otro", "Otro"],
+] as const;
+export type Reparto = Partial<Record<(typeof PARTES_PAGO)[number][0], number>> & { otro_nombre?: string };
+
+// "Dueño", "Otro: Junta de vecinos" o "50% dueño · 50% inquilino".
+export function textoPaga(quien: string | null | undefined, reparto?: Reparto | null) {
+  if (!quien) return "";
+  const otro = reparto?.otro_nombre?.trim();
+  if (quien === "otro") return otro ? `Otro: ${otro}` : "Otro";
+  if (quien !== "compartido") return etiqueta(QUIEN_PAGA, quien);
+  const partes = PARTES_PAGO.filter(([v]) => Number(reparto?.[v] ?? 0) > 0).map(([v, t]) => `${Number(reparto![v])}% ${v === "otro" && otro ? otro : t.toLowerCase()}`);
+  return partes.length ? partes.join(" · ") : "Compartido";
+}
+
+// Fracción (0 a 1) que le toca a una parte, p. ej. al dueño para su reporte y liquidación.
+export function parteDe(quien: string | null | undefined, reparto: Reparto | null | undefined, parte: (typeof PARTES_PAGO)[number][0]) {
+  if (quien === "compartido") return Math.max(0, Math.min(100, Number(reparto?.[parte] ?? 0))) / 100;
+  return quien === parte ? 1 : 0;
+}
+
+// Lee "quien_paga" y, si es compartido, los porcentajes (deben sumar 100). Devuelve null si no es válido.
+export function leerPaga(f: FormData, porDefecto: string | null = null): { quien_paga: string | null; reparto: Reparto | null; error?: string } {
+  const quien = String(f.get("quien_paga") ?? "").trim();
+  if (!QUIEN_PAGA.some(([v]) => v === quien)) return { quien_paga: porDefecto, reparto: null };
+  const otro = String(f.get("pago_otro") ?? "").trim().slice(0, 80);
+  if (quien === "otro") return { quien_paga: "otro", reparto: otro ? { otro_nombre: otro } : null };
+  if (quien !== "compartido") return { quien_paga: quien, reparto: null };
+  const reparto: Reparto = {};
+  let suma = 0;
+  for (const [v] of PARTES_PAGO) {
+    const n = Math.round(Number(String(f.get(`pct_${v}`) ?? "").replace(/[^0-9.]/g, "")) * 100) / 100;
+    if (n > 0 && n <= 100) {
+      reparto[v] = n;
+      suma += n;
+    }
+  }
+  if (otro && reparto.otro) reparto.otro_nombre = otro;
+  if (Math.abs(suma - 100) > 0.01) return { quien_paga: null, reparto: null, error: `Los porcentajes deben sumar 100% (suman ${suma}%).` };
+  return { quien_paga: "compartido", reparto };
+}
 
 export function etiqueta(lista: readonly (readonly [string, string])[], valor: string | null | undefined) {
   return lista.find(([v]) => v === valor)?.[1] ?? valor ?? "";
