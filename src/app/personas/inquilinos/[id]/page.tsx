@@ -10,7 +10,8 @@ import { COLOR_ESTADO, ESTADOS_TICKET, etiqueta, formatoFecha, linkWhatsApp, pes
 import { sesionConOrg } from "@/lib/sesion";
 import { SeccionDocumentos } from "@/components/Documentos";
 import { origen } from "@/lib/util";
-import { editarContrato, guardarDatosInquilino, nuevoContrato, renovarContrato, terminarContrato } from "../../actions";
+import { editarContrato, guardarDatosInquilino, nuevoContrato, terminarContrato } from "../../actions";
+import { Renovacion } from "@/components/Renovacion";
 import { guardarPoliza, prepararContrato } from "@/app/contratos/actions";
 import { SeccionFiscalInquilino } from "@/components/SeccionesFiscales";
 
@@ -227,21 +228,7 @@ async function Contenido({ params }: { params: Promise<{ id: string }> }) {
               {activo && <ExtrasContrato db={supabase} contratoId={activo.id} avalNombre={inq.aval_nombre} />}
               {activo ? (
                 <div className="mt-2 flex flex-col gap-2 border-t border-borde-suave pt-3">
-                  <details>
-                    <summary className="cursor-pointer font-semibold text-verde">Renovar</summary>
-                    <form action={renovarContrato} className="mt-2 grid grid-cols-2 gap-2">
-                      <input type="hidden" name="id" value={activo.id} />
-                      <Etiqueta texto="Nuevo fin">
-                        <input type="date" name="fin" required defaultValue={unAnoDespues(activo.fin)} className={campo} />
-                      </Etiqueta>
-                      <Etiqueta texto="Nueva renta">
-                        <input name="renta" inputMode="decimal" defaultValue={activo.renta} className={campo} />
-                      </Etiqueta>
-                      <Boton className="col-span-2 justify-self-start" enviando="Renovando…">
-                        Renovar contrato
-                      </Boton>
-                    </form>
-                  </details>
+                  <Renovacion db={supabase} contrato={activo} />
                   <details>
                     <summary className="cursor-pointer font-semibold text-verde">Editar contrato</summary>
                     <form action={editarContrato} className="mt-2 grid grid-cols-2 gap-2">

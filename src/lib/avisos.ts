@@ -7,6 +7,8 @@ import { inicioDeMes, mesAnterior, mesTexto } from "./reporte";
 import { generarMantenimientos } from "./mantenimiento";
 import { enMX, fechaCita } from "./agenda";
 import { enviarAProveedor } from "./push";
+import { cobrarDomiciliados } from "./cobro";
+import { actualizarINPC } from "./inpc";
 import { enviarPlantilla, telefonoValido, whatsappConfigurado, type MensajeWA } from "./whatsapp";
 
 export type TipoAviso = "renta" | "vencida" | "reporte" | "renovacion" | "servicios" | "citas" | "resumen";
@@ -35,6 +37,7 @@ export async function correrAvisos(db: SupabaseClient, opciones: { soloOrg?: str
   let q = db.from("organizaciones").select("id, nombre, avisos, miembros(email, rol)");
   if (opciones.soloOrg) q = q.eq("id", opciones.soloOrg);
   const { data: orgs, error } = await q;
+  if (!opciones.soloOrg) await actualizarINPC(db); // INPC del INEGI, una vez al día
   if (error) return { ok: false, error: error.message, resultados: [] as ResultadoOrg[] };
   const resultados: ResultadoOrg[] = [];
   for (const org of (orgs ?? []) as Org[]) {
@@ -50,6 +53,10 @@ export async function correrAvisos(db: SupabaseClient, opciones: { soloOrg?: str
 async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<ResultadoOrg> {
   await db.rpc("generar_cobros", { org: org.id });
   const mantenimientos = await generarMantenimientos(db, org.id);
+  // Rentas con pago automático: se cobran solas el día que vencen.
+  const auto = await cobrarDomiciliados(db, org.id, base).catch(() => ({ cobrados: 0, fallidos: 0 }));
+  const { data: doms } = await db.from("contratos").select("id").eq("organizacion_id", org.id).eq("domiciliado", true);
+  const domiciliados = new Set((doms ?? []).map((x) => x.id as string));
   const activo = (t: TipoAviso) => org.avisos?.[t] !== false;
   const hoy = hoyMX();
   const responsables = valido(org.avisos?.correo)
@@ -69,7 +76,7 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
   // Rentas: aviso 3 días antes y recordatorio de vencida
   const { data: cobros } = await db
     .from("cobros_renta")
-    .select("id, monto, recargo, vence, estado, token, contratos(inquilinos(nombre, email, telefono), propiedades(nombre))")
+    .select("id, monto, recargo, vence, estado, token, contrato_id, contratos(inquilinos(nombre, email, telefono), propiedades(nombre))")
     .eq("organizacion_id", org.id)
     .in("estado", ["pendiente", "vencido"])
     .gte("vence", hoyMX(-7))
@@ -81,8 +88,10 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     vence: string;
     estado: string;
     token: string;
+    contrato_id: string;
     contratos: { inquilinos: { nombre: string; email: string | null; telefono: string | null } | null; propiedades: { nombre: string } | null } | null;
   }[]) {
+    if (domiciliados.has(r.contrato_id)) continue; // se cobra sola; si falla, el inquilino ya recibe su aviso
     const inq = r.contratos?.inquilinos;
     if (!inq || (!valido(inq.email) && !telefonoValido(inq.telefono))) continue;
     const casa = r.contratos?.propiedades?.nombre ?? "tu casa";
@@ -277,6 +286,8 @@ async function avisosDeOrg(db: SupabaseClient, org: Org, base: string): Promise<
     ]
       .filter(([n]) => (n as number) > 0)
       .map(([n, t]) => `• ${n} ${t}`);
+    if (auto.cobrados) lineas.push(`• Cobramos ${auto.cobrados} ${auto.cobrados === 1 ? "renta" : "rentas"} con pago automático.`);
+    if (auto.fallidos) lineas.push(`• ${auto.fallidos} ${auto.fallidos === 1 ? "cobro automático no pasó" : "cobros automáticos no pasaron"}; ya le avisamos al inquilino.`);
     if (visitasManana) lineas.push(`• Mañana hay ${visitasManana} ${visitasManana === 1 ? "visita de proveedor" : "visitas de proveedores"} agendada${visitasManana === 1 ? "" : "s"}.`);
     if (mantenimientos) lineas.push(`• Creamos ${mantenimientos} ${mantenimientos === 1 ? "ticket" : "tickets"} de mantenimiento preventivo para esta semana.`);
     if (nuevos.length) lineas.push(`• Hoy mandamos ${nuevos.length} ${nuevos.length === 1 ? "aviso" : "avisos"} por ti a inquilinos y dueños.`);

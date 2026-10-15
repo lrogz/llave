@@ -68,6 +68,8 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    16. `supabase/migrations/20261014150000_red_agenda.sql`
    17. `supabase/migrations/20261014160000_push.sql`
    18. `supabase/migrations/20261014170000_push_proveedores.sql`
+   19. `supabase/migrations/20261015090000_inpc_aumentos.sql`
+   20. `supabase/migrations/20261015100000_cobro_automatico.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -156,6 +158,8 @@ Un número de WhatsApp Business para Black Key: manda los avisos (renta, vencida
    | `bk_renovacion` | Hola {{1}}, te escribimos de {{2}}. Tu contrato de {{3}} termina el {{4}}. ¿Te gustaría renovar? Responde este mensaje y te compartimos las condiciones. |
    | `bk_cita` | Hola {{1}}, te escribimos de {{2}}. {{3}} irá a {{4}} el {{5}} para atender: {{6}}. Si no puedes recibirlo, responde este mensaje. |
    | `bk_cita_proveedor` | Hola {{1}}, tienes una visita de {{2}}: {{3}} en {{4}}, el {{5}}. Detalles, cómo llegar y botón de Llegué/Terminé: {{6}} |
+   | `bk_aumento_renta` | Hola {{1}}, te escribimos de {{2}}. Tu contrato de {{3}} se renovó hasta el {{4}}. A partir del {{5}} la renta será de {{6}}. Aquí ves el detalle del cálculo: {{7}} |
+   | `bk_cobro_fallido` | Hola {{1}}, te escribimos de {{2}}. No pudimos cobrar la renta de {{3}} por {{4}} a tu tarjeta. Puedes pagar o cambiar tu tarjeta aquí: {{5}} |
    | `bk_servicio` | Hola {{1}}, te escribimos de {{2}}. El recibo de {{3}} de {{4}} vence el {{5}}. Te lo recordamos para que no se generen recargos. |
 
 7. En Vercel agrega `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_APP_SECRET` y `WHATSAPP_VERIFY_TOKEN` (un texto que tú inventes) y Redeploy.
@@ -194,6 +198,25 @@ Reglas que aplica (valídalas con tu contador): clave 80131500 / unidad E48; cas
 Proveedores: su portal `/pro/…` también se instala ("Mi agenda") y les avisa de trabajos nuevos para cotizar, cotizaciones aprobadas, visitas agendadas o canceladas y el recordatorio un día antes. Usa las mismas llaves.
 
 Avisan al instante: reporte nuevo (QR o WhatsApp), comprobante de pago, cotización recibida, respuesta del dueño, interesado en un anuncio, solicitud de renta, firma de contrato y horario elegido por el inquilino.
+
+### 11. Aumento de renta por inflación (INPC)
+
+1. Pide tu token gratis del INEGI: inegi.org.mx › Servicios › API de Indicadores › "Obtén tu token".
+2. En Vercel agrega `INEGI_TOKEN`. El cron diario trae el INPC oficial (Índice general, base 2Q jul 2018 = 100; indicador `628194` de la fuente BIE, cambiable con `INEGI_INPC_ID` / `INEGI_FUENTE`). Sin token se usan los valores de referencia que trae la migración 19: verifícalos.
+3. En la ficha del inquilino › Contrato › "Cómo sube la renta": INPC (+ puntos extra), % fijo o sin aumento, con tope opcional.
+4. "Renovar" sugiere la renta nueva: INPC del último mes publicado antes de que entre la renta nueva ÷ el del mismo mes del año anterior. Programa la renta desde esa fecha (los cobros salen solos con el monto nuevo) y avisa al inquilino con una carta `/n/…` que muestra el cálculo.
+
+### 12. Cobro automático de rentas (Stripe Connect)
+
+El dinero de las rentas llega a la cuenta de Stripe **de cada administradora** (cargos directos); Black Key no lo toca.
+
+1. En tu cuenta de Stripe (la misma de la suscripción) activa **Connect** y, en Ajustes › Métodos de pago, **Transferencias bancarias (México)** y **OXXO**.
+2. En Developers › Webhooks crea un endpoint para **cuentas conectadas** ("Events on Connected accounts") a `https://TU-DOMINIO/api/stripe/webhook` con: `payment_intent.succeeded`, `payment_intent.payment_failed`, `checkout.session.completed`, `account.updated`. Copia su secreto a `STRIPE_CONNECT_WEBHOOK_SECRET` en Vercel.
+3. Opcional: `STRIPE_COMISION_PCT` (p. ej. `1`) para cobrar una comisión de plataforma por cada renta.
+4. Cada administradora: Ajustes › "Cobro automático de rentas" › Conectar mi cuenta de Stripe (Stripe le pide INE, RFC y cuenta bancaria).
+5. El inquilino, en su link de pago: "Pagar" (tarjeta, SPEI con CLABE única que se concilia sola, u OXXO hasta $10,000) o "Activar pago automático" (guarda su tarjeta; el cron la cobra el día de pago, hasta 3 intentos cada 2 días, y le avisa si se rechaza).
+
+Stripe no ofrece domiciliación bancaria en México; el pago automático es con tarjeta. Revisa las tarifas vigentes en stripe.com/mx/pricing.
 
 ## Seguridad
 

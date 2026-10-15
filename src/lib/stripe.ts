@@ -21,16 +21,29 @@ function formulario(datos: Record<string, unknown>, prefijo = "", out = new URLS
   return out;
 }
 
-export async function stripe<T = Record<string, unknown>>(metodo: "GET" | "POST", ruta: string, datos?: Record<string, unknown>): Promise<T> {
-  const r = await fetch(base() + ruta, {
-    method: metodo,
-    headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: metodo === "POST" && datos ? formulario(datos) : undefined,
-  });
-  const j = (await r.json()) as T & { error?: { message?: string } };
-  if (!r.ok) throw new Error(`Stripe: ${j.error?.message ?? r.status}`);
+// `cuenta`: actúa sobre la cuenta conectada de una administradora (Stripe-Account). `clave`: idempotencia.
+export async function stripe<T = Record<string, unknown>>(
+  metodo: "GET" | "POST" | "DELETE",
+  ruta: string,
+  datos?: Record<string, unknown>,
+  opciones: { cuenta?: string | null; clave?: string } = {},
+): Promise<T> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" };
+  if (opciones.cuenta) headers["Stripe-Account"] = opciones.cuenta;
+  if (opciones.clave) headers["Idempotency-Key"] = opciones.clave;
+  const r = await fetch(base() + ruta, { method: metodo, headers, body: metodo === "POST" && datos ? formulario(datos) : undefined });
+  const j = (await r.json()) as T & { error?: { message?: string; code?: string; decline_code?: string; payment_intent?: { id: string } } };
+  if (!r.ok) {
+    const e = new Error(`Stripe: ${j.error?.message ?? r.status}`) as Error & { codigo?: string; pagoId?: string };
+    e.codigo = j.error?.decline_code ?? j.error?.code;
+    e.pagoId = j.error?.payment_intent?.id;
+    throw e;
+  }
   return j;
 }
+
+// Solo hace falta la llave secreta para que las administradoras conecten su cuenta (Stripe Connect).
+export const connectConfigurado = () => Boolean(process.env.STRIPE_SECRET_KEY);
 
 // Verifica la firma "Stripe-Signature: t=…,v1=…" (HMAC-SHA256 de "t.cuerpo"), con 5 min de tolerancia.
 export function firmaValida(cuerpo: string, cabecera: string | null, secreto: string) {

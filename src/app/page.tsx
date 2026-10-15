@@ -18,6 +18,8 @@ type Propiedad = {
   estado: "rentada" | "vacia" | "en_mantenimiento";
   renta_mensual: number | null;
   tickets: { estado: string }[];
+  duenos: { nombre: string } | null;
+  contratos: { activo: boolean; inquilinos: { nombre: string } | null }[];
 };
 
 const ESTADOS: Record<Propiedad["estado"], { texto: string; clase: string }> = {
@@ -63,10 +65,10 @@ async function Contenido() {
 
   const { data } = await supabase
     .from("propiedades")
-    .select("id, nombre, direccion, tipo, estado, renta_mensual, foto_path, tickets(estado)")
+    .select("id, nombre, direccion, tipo, estado, renta_mensual, foto_path, tickets(estado), duenos(nombre), contratos(activo, inquilinos(nombre))")
     .order("created_at", { ascending: false });
 
-  const propiedades = (data ?? []) as Propiedad[];
+  const propiedades = (data ?? []) as unknown as Propiedad[];
   const fotos = await urlsPortada(supabase, propiedades.map((p) => p.foto_path));
   const abiertos = (p: Propiedad) =>
     p.tickets.filter((t) => t.estado !== "resuelto" && t.estado !== "cancelado").length;
@@ -105,6 +107,7 @@ async function Contenido() {
           {propiedades.map((p) => {
             const n = abiertos(p);
             const estado = ESTADOS[p.estado];
+            const inquilino = p.contratos?.find((c) => c.activo)?.inquilinos?.nombre;
             return (
               <Link key={p.id} href={`/propiedades/${p.id}`} className="flex flex-col overflow-hidden rounded-2xl bg-white hover:ring-2 hover:ring-verde/30">
                 <Portada tipo={p.tipo} semilla={p.id} url={p.foto_path ? fotos.get(p.foto_path) : null} className="h-32">
@@ -117,12 +120,21 @@ async function Contenido() {
                     </span>
                   )}
                 </Portada>
-                <div className="flex flex-col gap-2.5 p-4">
+                <div className="flex flex-1 flex-col gap-2.5 p-4">
                   <div>
                     <h2 className="font-bold">{p.nombre}</h2>
-                    {p.direccion && <p className="text-sm text-gris">{p.direccion}</p>}
+                    {inquilino && (
+                      <p className="truncate text-sm text-gris">
+                        <span className="font-semibold text-tinta">Inquilino:</span> {inquilino}
+                      </p>
+                    )}
+                    {p.duenos?.nombre && (
+                      <p className="truncate text-sm text-gris">
+                        <span className="font-semibold text-tinta">Propietario:</span> {p.duenos.nombre}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between border-t border-borde-suave pt-2.5 text-sm">
+                  <div className="mt-auto flex items-center justify-between border-t border-borde-suave pt-2.5 text-sm">
                     <span className={`rounded-full px-2.5 py-0.5 font-semibold ${estado.clase}`}>{estado.texto}</span>
                     {p.renta_mensual != null && <span className="font-mono">{pesos.format(p.renta_mensual)}</span>}
                   </div>

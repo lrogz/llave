@@ -85,7 +85,7 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
   const [{ data }, { data: o }, { count: contratosActivos }, { data: rs }] = await Promise.all([
     supabase
       .from("cobros_renta")
-      .select("id, monto, recargo, vence, estado, metodo, pagado_at, comprobante_path, token, nota, contratos(propiedades(id, nombre), inquilinos(id, nombre, telefono))")
+      .select("id, contrato_id, monto, recargo, vence, estado, metodo, pagado_at, comprobante_path, token, nota, contratos(propiedades(id, nombre), inquilinos(id, nombre, telefono))")
       .eq("periodo", periodo)
       .order("vence"),
     supabase.from("organizaciones").select("datos_pago").eq("id", org.id).maybeSingle(),
@@ -107,6 +107,14 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
   const { data: firmadas } = rutas.length ? await supabase.storage.from(BUCKET).createSignedUrls(rutas, 3600) : { data: [] };
   const url = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]));
   const base = await origen();
+  // Pago automático (si la base ya tiene cobro automático).
+  const ids = [...new Set(cobros.map((c) => (c as unknown as { contrato_id?: string }).contrato_id).filter(Boolean))] as string[];
+  const [{ data: autos }, { data: errs }] = await Promise.all([
+    ids.length ? supabase.from("contratos").select("id").in("id", ids).eq("domiciliado", true) : Promise.resolve({ data: [] }),
+    cobros.length ? supabase.from("cobros_renta").select("id, error_cobro").in("id", cobros.map((c) => c.id)).not("error_cobro", "is", null) : Promise.resolve({ data: [] }),
+  ]);
+  const automatico = new Set(((autos ?? []) as { id: string }[]).map((x) => x.id));
+  const errorDe = new Map(((errs ?? []) as { id: string; error_cobro: string }[]).map((x) => [x.id, x.error_cobro]));
 
   const total = (c: Cobro) => Number(c.monto) + Number(c.recargo ?? 0);
   const suma = (estados: Cobro["estado"][]) => cobros.filter((c) => estados.includes(c.estado)).reduce((s, c) => s + total(c), 0);
@@ -193,6 +201,8 @@ async function Contenido({ searchParams }: { searchParams: Promise<{ mes?: strin
                             {c.pagado_at ? `pagó ${formatoFecha(c.pagado_at)}` : `vence ${formatoFecha(c.vence)}`}
                             {c.metodo && c.estado === "pagado" ? ` · ${METODOS.find(([v]) => v === c.metodo)?.[1] ?? ""}` : ""}
                           </p>
+                          {automatico.has((c as unknown as { contrato_id: string }).contrato_id) && c.estado !== "pagado" && <p className="text-xs font-semibold text-verde-oscuro">⚡ Pago automático con tarjeta</p>}
+                          {errorDe.has(c.id) && c.estado !== "pagado" && <p className="text-xs text-naranja-oscuro">No pasó el cobro: {errorDe.get(c.id)}</p>}
                           {c.nota && <p className="text-xs text-gris">Nota: {c.nota}</p>}
                         </div>
                         <div className="flex flex-none items-center gap-2">

@@ -11,6 +11,7 @@ import { formatoFechaHora } from "@/lib/datos";
 import { sesionConOrg } from "@/lib/sesion";
 import { pushConfigurado } from "@/lib/push";
 import { AppCelular } from "@/components/AppCelular";
+import { CobroAutomatico } from "@/components/CobroAutomatico";
 import { desuscribir, probarNotificacion, suscribir } from "@/app/notificaciones/actions";
 import { guardarAvisos, guardarNombre } from "./actions";
 import { BotonMandarAhora, FormContrasena, FormCorreoAvisos } from "./Formularios";
@@ -71,6 +72,8 @@ async function Contenido() {
             probar={probarNotificacion}
           />
         </section>
+
+        <CobroAutomatico db={supabase} orgId={org.id} puedeEditar={admin} />
 
         <div className="flex flex-wrap items-start gap-5">
           <div className="flex min-w-0 flex-[1.4_1_380px] flex-col gap-5">

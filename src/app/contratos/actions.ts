@@ -139,3 +139,23 @@ export async function guardarPoliza(f: FormData) {
     .maybeSingle();
   if (data) revalidatePath(`/personas/inquilinos/${data.inquilino_id}`);
 }
+
+// Cómo sube la renta al renovar: INPC (+ puntos), % fijo o sin aumento; con tope opcional.
+export async function guardarAjuste(f: FormData) {
+  const { supabase } = await sesionConOrg();
+  const id = String(f.get("id") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return;
+  const tipo = String(f.get("ajuste_tipo") ?? "");
+  const num = (k: string) => {
+    const v = String(f.get(k) ?? "").replace(/[^0-9.]/g, "");
+    const n = v ? Number(v) : null;
+    return n != null && n >= 0 && n <= 100 ? Math.round(n * 100) / 100 : null;
+  };
+  const { data } = await supabase
+    .from("contratos")
+    .update({ ajuste_tipo: ["inpc", "fijo", "ninguno"].includes(tipo) ? tipo : "inpc", ajuste_pct: num("ajuste_pct") ?? 0, ajuste_tope: num("ajuste_tope") })
+    .eq("id", id)
+    .select("inquilino_id")
+    .maybeSingle();
+  if (data) revalidatePath(`/personas/inquilinos/${data.inquilino_id}`);
+}

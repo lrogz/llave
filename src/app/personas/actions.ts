@@ -219,25 +219,6 @@ export async function editarContrato(f: FormData) {
   revalidatePath(`/personas/inquilinos/${c.inquilino_id}`);
 }
 
-export async function renovarContrato(f: FormData) {
-  const { supabase, org, user } = await sesionConOrg();
-  const c = await contratoDeLaOrg(supabase, txt(f, "id", 40));
-  const fin = txt(f, "fin", 10);
-  const renta = monto(txt(f, "renta", 20)) ?? Number(c.renta);
-  if (!esFecha(fin) || fin <= c.fin) throw new Error("La nueva fecha de fin debe ser después de la actual.");
-  await supabase.from("contratos").update({ fin, renta, activo: true }).eq("id", c.id);
-  if (renta !== Number(c.renta)) await ajustarCobrosPendientes(supabase, c.id, renta);
-  const fmt = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
-  await supabase.from("notas").insert({
-    organizacion_id: org.id,
-    inquilino_id: c.inquilino_id,
-    autor_email: user.email ?? null,
-    texto: `Renovó contrato hasta ${fin}, renta ${fmt.format(renta)}${renta !== Number(c.renta) ? ` (antes ${fmt.format(Number(c.renta))})` : ""}.`,
-  });
-  revalidatePath(`/personas/inquilinos/${c.inquilino_id}`);
-  revalidatePath("/hoy");
-}
-
 export async function terminarContrato(f: FormData) {
   const { supabase, org, user } = await sesionConOrg();
   const c = await contratoDeLaOrg(supabase, txt(f, "id", 40));
