@@ -103,7 +103,7 @@ async function Contenido() {
           </Link>
         )}
 
-        <section aria-label="Propiedades" className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+        <section aria-label="Propiedades" className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] items-start gap-4">
           {propiedades.map((p) => {
             const n = abiertos(p);
             const estado = ESTADOS[p.estado];
@@ -123,16 +123,12 @@ async function Contenido() {
                 <div className="flex flex-1 flex-col gap-2.5 p-4">
                   <div>
                     <h2 className="font-bold">{p.nombre}</h2>
-                    {inquilino && (
-                      <p className="truncate text-sm text-gris">
-                        <span className="font-semibold text-tinta">Inquilino:</span> {inquilino}
-                      </p>
-                    )}
-                    {p.duenos?.nombre && (
-                      <p className="truncate text-sm text-gris">
-                        <span className="font-semibold text-tinta">Propietario:</span> {p.duenos.nombre}
-                      </p>
-                    )}
+                    <p className="truncate text-sm text-gris">
+                      <span className="font-semibold text-tinta">Inquilino:</span> {inquilino ?? "—"}
+                    </p>
+                    <p className="truncate text-sm text-gris">
+                      <span className="font-semibold text-tinta">Propietario:</span> {p.duenos?.nombre ?? "—"}
+                    </p>
                   </div>
                   <div className="mt-auto flex items-center justify-between border-t border-borde-suave pt-2.5 text-sm">
                     <span className={`rounded-full px-2.5 py-0.5 font-semibold ${estado.clase}`}>{estado.texto}</span>
