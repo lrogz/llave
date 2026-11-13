@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { avisarEquipo } from "@/lib/push";
+import { avisarEquipo, avisarVivienda } from "@/lib/push";
 import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
 import { aCentavos, esToken, esUuid, mensajeError } from "@/lib/condominios";
 
@@ -208,4 +208,101 @@ export async function cancelarMudanza(f: FormData) {
   const { error } = await createAdminClient().rpc("vecino_cancelar_mudanza", { p_token: token, p_mudanza: id });
   if (error) throw new Error(mensajeError(error));
   revalidatePath(`/vecino/${token}`, "layout");
+}
+
+// ─── Notificaciones push del residente ───
+export async function suscribirVecino(token: string, sub: unknown) {
+  if (!esToken(token)) return { ok: false };
+  const s = sub as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+  if (!s?.endpoint || !/^https:\/\//.test(s.endpoint) || !s.keys?.p256dh || !s.keys?.auth) return { ok: false };
+  const admin = createAdminClient();
+  const { data: r } = await admin.from("residentes").select("id").eq("token", token).eq("activo", true).maybeSingle();
+  if (!r) return { ok: false };
+  const { error } = await admin
+    .from("suscripciones_push_residentes")
+    .upsert({ residente_id: r.id, endpoint: s.endpoint.slice(0, 1000), p256dh: s.keys.p256dh.slice(0, 200), auth: s.keys.auth.slice(0, 100) }, { onConflict: "endpoint" });
+  return { ok: !error };
+}
+
+export async function desuscribirVecino(token: string, endpoint: string) {
+  if (!esToken(token)) return;
+  const admin = createAdminClient();
+  const { data: r } = await admin.from("residentes").select("id").eq("token", token).maybeSingle();
+  if (r) await admin.from("suscripciones_push_residentes").delete().eq("residente_id", r.id).eq("endpoint", String(endpoint).slice(0, 1000));
+}
+
+export async function probarAvisoVecino(token: string) {
+  if (!esToken(token)) return { ok: false };
+  avisarVivienda(await viviendaDe(token), (t) => ({ titulo: "Avisos activados ✅", cuerpo: "Así te llegarán tus paquetes, visitas y avisos de la privada.", url: `/vecino/${t}` }));
+  return { ok: true };
+}
+
+async function viviendaDe(token: string) {
+  const { data } = await createAdminClient().from("residentes").select("vivienda_id").eq("token", token).eq("activo", true).maybeSingle();
+  return (data?.vivienda_id as string) ?? "";
+}
+
+// ─── Timbre ───
+export async function responderTimbre(f: FormData) {
+  const token = tokenDe(f);
+  const id = txt(f, "llamada_id", 40);
+  if (!esUuid(id)) return;
+  const { error } = await createAdminClient().rpc("vecino_responder_timbre", { p_token: token, p_llamada: id, p_autorizar: txt(f, "decision") === "autorizar" });
+  if (error) throw new Error(mensajeError(error));
+  revalidatePath(`/vecino/${token}`, "layout");
+}
+
+// ─── Comunidad ───
+export async function votar(f: FormData) {
+  const token = tokenDe(f);
+  const id = txt(f, "votacion_id", 40);
+  const opcion = Number(txt(f, "opcion", 2));
+  if (!esUuid(id) || !Number.isInteger(opcion)) return;
+  const { error } = await createAdminClient().rpc("vecino_votar", { p_token: token, p_votacion: id, p_opcion: opcion });
+  if (error) throw new Error(mensajeError(error));
+  revalidatePath(`/vecino/${token}/comunidad`);
+}
+
+export async function publicar(_: Estado, f: FormData): Promise<Estado> {
+  const token = tokenDe(f);
+  const { error } = await createAdminClient().rpc("vecino_publicar", { p_token: token, p_tipo: txt(f, "tipo", 20), p_titulo: txt(f, "titulo", 100), p_texto: txt(f, "texto", 1000) });
+  if (error) return { error: mensajeError(error, "No pudimos publicar.") };
+  revalidatePath(`/vecino/${token}/comunidad`);
+  return { ok: "Publicado." };
+}
+
+export async function responderPublicacion(f: FormData) {
+  const token = tokenDe(f);
+  const id = txt(f, "publicacion_id", 40);
+  const texto = txt(f, "texto", 500);
+  if (!esUuid(id) || !texto) return;
+  const { error } = await createAdminClient().rpc("vecino_responder", { p_token: token, p_publicacion: id, p_texto: texto });
+  if (error) throw new Error(mensajeError(error));
+  revalidatePath(`/vecino/${token}/comunidad`);
+}
+
+export async function borrarPublicacion(f: FormData) {
+  const token = tokenDe(f);
+  const id = txt(f, "publicacion_id", 40);
+  if (!esUuid(id)) return;
+  await createAdminClient().rpc("vecino_borrar_publicacion", { p_token: token, p_publicacion: id });
+  revalidatePath(`/vecino/${token}/comunidad`);
+}
+
+// ─── Autos y entregas ───
+export async function guardarVehiculo(_: Estado, f: FormData): Promise<Estado> {
+  const token = tokenDe(f);
+  const borrar = txt(f, "borrar", 40);
+  const { error } = await createAdminClient().rpc("vecino_vehiculo", { p_token: token, p_placa: txt(f, "placa", 12), p_descripcion: txt(f, "descripcion", 60), p_borrar: esUuid(borrar) ? borrar : null });
+  if (error) return { error: mensajeError(error) };
+  revalidatePath(`/vecino/${token}/accesos`);
+  return { ok: borrar ? "Vehículo quitado." : "Vehículo registrado. La cámara de placas ya lo reconoce." };
+}
+
+export async function crearPinEntrega(_: Estado, f: FormData): Promise<Estado> {
+  const token = tokenDe(f);
+  const { data, error } = await createAdminClient().rpc("vecino_crear_pin", { p_token: token, p_descripcion: txt(f, "descripcion", 120), p_dias: Number(txt(f, "dias", 2)) || 3 });
+  if (error) return { error: mensajeError(error) };
+  revalidatePath(`/vecino/${token}/accesos`);
+  return { ok: (data as { pin: string }).pin };
 }

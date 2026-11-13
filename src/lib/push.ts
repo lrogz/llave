@@ -18,7 +18,7 @@ function configurar() {
 
 type Sus = { id: string; endpoint: string; p256dh: string; auth: string };
 
-async function enviar(subs: Sus[], aviso: AvisoPush) {
+async function enviar(subs: Sus[], aviso: AvisoPush, tabla = "suscripciones_push") {
   if (!subs.length) return 0;
   configurar();
   const db = createAdminClient();
@@ -38,8 +38,8 @@ async function enviar(subs: Sus[], aviso: AvisoPush) {
       }
     }),
   );
-  if (muertas.length) await db.from("suscripciones_push").delete().in("id", muertas);
-  if (vivas.length) await db.from("suscripciones_push").update({ ultimo_envio: new Date().toISOString() }).in("id", vivas);
+  if (muertas.length) await db.from(tabla).delete().in("id", muertas);
+  if (vivas.length) await db.from(tabla).update({ ultimo_envio: new Date().toISOString() }).in("id", vivas);
   return vivas.length;
 }
 
@@ -77,4 +77,39 @@ export async function enviarAUsuario(userId: string, aviso: AvisoPush) {
   if (!pushConfigurado()) return 0;
   const { data } = await createAdminClient().from("suscripciones_push").select("id, endpoint, p256dh, auth").eq("user_id", userId);
   return enviar((data ?? []) as Sus[], aviso);
+}
+
+// ─── Residentes de condominios (portal por link) ───
+async function enviarAResidentes(residentes: string[], aviso: AvisoPush) {
+  if (!pushConfigurado() || !residentes.length) return 0;
+  const { data } = await createAdminClient().from("suscripciones_push_residentes").select("id, endpoint, p256dh, auth").in("residente_id", residentes);
+  return enviar((data ?? []) as Sus[], aviso, "suscripciones_push_residentes");
+}
+
+// A todos los residentes activos de una vivienda (paquete, visita que llegó, timbre…). Después de responder.
+export function avisarVivienda(viviendaId: string, aviso: (token: string) => AvisoPush) {
+  if (!pushConfigurado()) return;
+  after(async () => {
+    try {
+      const { data } = await createAdminClient().rpc("residentes_de_vivienda", { p_vivienda: viviendaId });
+      for (const r of (data ?? []) as { id: string; token: string }[]) await enviarAResidentes([r.id], aviso(r.token));
+    } catch {
+      /* nunca rompe la acción principal */
+    }
+  });
+}
+
+// Aviso urgente a todo el condominio o a una zona.
+export function avisarCondominio(condominioId: string, zonaId: string | null, aviso: (token: string) => AvisoPush) {
+  if (!pushConfigurado()) return;
+  after(async () => {
+    try {
+      let q = createAdminClient().from("residentes").select("id, token, viviendas!inner(zona_id)").eq("condominio_id", condominioId).eq("activo", true);
+      if (zonaId) q = q.eq("viviendas.zona_id", zonaId);
+      const { data } = await q;
+      for (const r of (data ?? []) as { id: string; token: string }[]) await enviarAResidentes([r.id], aviso(r.token));
+    } catch {
+      /* nunca rompe la acción principal */
+    }
+  });
 }

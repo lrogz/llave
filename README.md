@@ -41,6 +41,9 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 | Reporte del comité | `/comite/[token]` | Comité |
 | Alta de residente con INE y selfie | `/alta/[token]` | Residente nuevo |
 | Pase de la visita | `/pase/[codigo]` | Visita |
+| Timbre por QR en la entrada | `/timbre/[token]` | Visita |
+| Tablet del cuarto de paquetes | `/kiosco/[token]` | Repartidor |
+| Cámara de placas (API) | `POST /api/condominios/lpr` | Cámara LPR |
 
 ## Qué hay en este repo
 
@@ -79,6 +82,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    21. `supabase/migrations/20261015110000_reparto_pagos.sql`
    22. `supabase/migrations/20261015120000_planes_por_nivel.sql`
    23. `supabase/migrations/20261112120000_condominios.sql`
+   24. `supabase/migrations/20261113090000_condominios_seguridad_comunidad.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -291,14 +295,29 @@ Toda la autorización de los links vive en funciones de la base (`vecino_*`, `ca
 - **Alta con INE y selfie:** el residente sube frente, reverso y selfie con su consentimiento; la administración las compara y aprueba. **Las imágenes se borran al decidir.** La comparación facial automática no está activa (ver pendientes).
 - **Archivos privados** en el bucket `llave` (`<organización>/condominios/<condominio>/…`), servidos con URLs firmadas de 1 hora.
 
+**Seguridad y comunidad (migración 24)**
+- **Foto en cada entrada:** después de autorizar, caseta toma la foto (queda en *Accesos*).
+- **Vetados y alertas:** nombre o placa con motivo. Si alguien de la lista llega con pase, por timbre, a mano o en auto, la caseta lo ve en rojo, no se registra y llega alerta (push) a la administración. Si entró sin conexión, se registra y se alerta.
+- **Timbre por QR:** imprime el QR (*Caseta y links*) y pégalo en la entrada. La visita elige vivienda; el residente recibe aviso y toca *Dejar pasar*: se crea un pase de 30 minutos que la visita ve en su celular y caseta registra.
+- **Leer INE en caseta:** foto del reverso; el nombre se lee en el teléfono del guardia (zona MRZ) y la imagen no se guarda ni se envía.
+- **Rondines:** puntos con QR imprimibles; el guardia los escanea y la entrega de turno muestra qué falta.
+- **Placas (LPR):** los residentes registran sus autos; las visitas con placa en su pase entran solas (configurable). La cámara (o su software) manda cada lectura a `POST /api/condominios/lpr` con el encabezado `x-bk-token`. Placa desconocida → alerta a caseta.
+- **Pluma y cuarto de paquetes:** botón *Abrir pluma* en caseta y apertura automática por placa o PIN, llamando a un relevador HTTPS (Shelly Cloud, controlador con API o puente propio). Sin liga configurada queda en **simulación** y se registra igual en *Aperturas*.
+- **Códigos de entrega:** el residente genera un PIN de 6 dígitos para el repartidor; se teclea en la tablet del cuarto de paquetes (`/kiosco/…`) o en caseta. Un solo uso, con vencimiento y bloqueo tras 10 intentos fallidos.
+- **Votaciones y asambleas:** convocatoria, orden del día, acta, acuerdos con responsable y fecha, y votaciones de un voto por vivienda (resultado por viviendas y por indiviso si lo cargas en el padrón, columna 7).
+- **Conciliación bancaria:** sube el CSV del estado de cuenta del condominio; se sugiere el pago por revisar del mismo monto o la vivienda mencionada en el concepto. Confirmar emite el recibo. Volver a subir el mismo archivo no duplica.
+- **Documentos y tablero vecinal:** reglamento, actas y pólizas (visibles u ocultos); tablero de recomendaciones, ventas, preguntas y mascotas perdidas, con respuestas dentro de la app sin mostrar teléfonos. La administración puede ocultar publicaciones.
+- **Avisos al celular del residente:** con las mismas llaves VAPID de la sección 10, el residente toca *Activar* en su portal y recibe: tocan el timbre, llegó tu visita, llegó tu paquete, caseta te respondió, nueva votación y avisos urgentes. En iPhone debe agregar el portal a inicio primero.
+
 **Simulaciones y pendientes (no procesa dinero real)**
 - Pagos: solo se **registran** transferencias ya hechas a la cuenta del condominio. Conciliación SPEI automática y cobro en línea: siguiente etapa (se puede reutilizar el Stripe Connect de rentas).
 - Avisos al residente: aparecen en su portal y la caseta/administración los manda por WhatsApp con un toque (wa.me). Mandarlos solos requiere plantillas nuevas de WhatsApp (p. ej. `bk_paquete`, `bk_pase_aprobado`) y push para residentes.
 - Verificación facial automática: requiere un proveedor (Truora, MetaMap, Incode…), su contrato y aviso de privacidad para datos biométricos. Hoy la revisión es manual.
-- Apertura de pluma/portón y lectores de tags: requiere el controlador de acceso del condominio (relevador por IP o API del fabricante).
+- Pluma y cuarto de paquetes: el software ya llama al relevador; falta instalar el relevador en cada condominio. Lectores de tags RFID: siguiente etapa.
+- Videollamada en el timbre: hoy es aviso con nombre, motivo y foto; la llamada con video requeriría un servicio de WebRTC.
 - Después del piloto: invitaciones para fiestas con QR por invitado, cajones de visita, objetos y mascotas perdidas, contratistas, rentas temporales, incidentes y rondines, cuotas extraordinarias ligadas a obra, asambleas y cambio de administración, e integración opcional con Blooni.
 
-**Pruebas:** `pruebas/README.md` (23 pruebas contra Postgres: QR válido/vencido/cancelado/doble escaneo, entrega de turno, queja privada, saldos, reintento de pago, aislamiento por rol y por condominio, altas, amenidades y mudanzas).
+**Pruebas:** `pruebas/README.md` (32 pruebas contra Postgres: QR válido/vencido/cancelado/doble escaneo, entrega de turno, queja privada, saldos, reintento de pago, aislamiento por rol y por condominio, altas, amenidades, mudanzas, vetados, placas, timbre, rondines, PIN de entrega, votaciones, tablero y conciliación).
 
 **Demo de punta a punta (5 minutos)**
 1. Condominios › Cargar condominios de ejemplo › entra a *Privada Los Encinos* › *Viviendas* › Casa 1 › copia el link de Ana Ruiz y ábrelo en el celular.

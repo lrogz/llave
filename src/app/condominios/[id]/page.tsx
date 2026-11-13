@@ -6,7 +6,7 @@ import { Cargando, Menu } from "@/components/Menu";
 import { sesionConOrg } from "@/lib/sesion";
 import { esUuid, hoyCDMX } from "@/lib/condominios";
 import { origen } from "@/lib/util";
-import { Accesos, Amenidades, Avisos, Caseta, Cuotas, Reportes, Resumen, Viviendas, type Ctx } from "./secciones";
+import { Accesos, Amenidades, Avisos, Caseta, Comunidad, Cuotas, Reportes, Resumen, Seguridad, Viviendas, type Ctx } from "./secciones";
 
 export const metadata: Metadata = { title: "Condominio · Black Key" };
 
@@ -15,6 +15,8 @@ const VISTAS = [
   ["viviendas", "Viviendas y residentes"],
   ["cuotas", "Cuotas y pagos"],
   ["accesos", "Accesos"],
+  ["seguridad", "Seguridad"],
+  ["comunidad", "Comunidad"],
   ["amenidades", "Amenidades y mudanzas"],
   ["avisos", "Avisos"],
   ["caseta", "Caseta y links"],
@@ -37,7 +39,7 @@ async function Contenido({ params, searchParams }: { params: Promise<{ id: strin
   if (!esUuid(id)) notFound();
   const { data: c } = await s.supabase
     .from("condominios")
-    .select("id, organizacion_id, propiedad_id, nombre, direccion, datos_pago, foto_path, caseta_token, comite_token, alta_token, comite_exporta, recibo_serie")
+    .select("id, organizacion_id, propiedad_id, nombre, direccion, datos_pago, foto_path, caseta_token, comite_token, alta_token, timbre_token, kiosco_token, lpr_token, pluma_url, paquetes_url, lpr_abre_visitas, comite_exporta, recibo_serie")
     .eq("id", id)
     .maybeSingle();
   if (!c) notFound();
@@ -74,6 +76,8 @@ async function Contenido({ params, searchParams }: { params: Promise<{ id: strin
         {vista === "viviendas" && <Viviendas ctx={ctx} />}
         {vista === "cuotas" && <Cuotas ctx={ctx} />}
         {vista === "accesos" && <Accesos ctx={ctx} />}
+        {vista === "seguridad" && <Seguridad ctx={ctx} />}
+        {vista === "comunidad" && <Comunidad ctx={ctx} />}
         {vista === "amenidades" && <Amenidades ctx={ctx} />}
         {vista === "avisos" && <Avisos ctx={ctx} />}
         {vista === "caseta" && <Caseta ctx={ctx} />}

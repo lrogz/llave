@@ -12,7 +12,7 @@ DATABASE_URL=postgres://postgres@localhost:5432/bk_pruebas npm run test:condomin
 
 `supabase-shim.sql` imita lo mínimo de Supabase (roles anon/authenticated/service_role, `auth.uid()`, `auth.jwt()`, esquema `storage` y `pgcrypto` en `extensions`) para que las migraciones corran igual que en Supabase.
 
-## Qué se prueba (23 pruebas)
+## Qué se prueba (32 pruebas)
 
 | Tema | Casos |
 | --- | --- |
@@ -23,3 +23,6 @@ DATABASE_URL=postgres://postgres@localhost:5432/bk_pruebas npm run test:condomin
 | Permisos y aislamiento | inquilino sin permiso no ve cuenta ni registra pagos; el residente solo ve su vivienda; la caseta no ve dinero ni quejas ni viviendas de otro condominio; otra administradora no ve ni escribe; los links no se pueden usar desde el navegador (anon) ni con sesión |
 | Altas | INE + selfie: vivienda de otro condominio y rutas ajenas rechazadas; al aprobar se crea el residente y se borran las fotos |
 | Amenidades y mudanzas | último lugar del gimnasio con 3 reservas simultáneas → 1 confirmada y 2 en espera, que sube al cancelar; salón: renta + depósito al estado de cuenta y devolución; mudanzas que chocan por elevador |
+| Seguridad | vetado con pase QR no entra y alerta; vetado manual en línea se bloquea y sin conexión se registra con alerta; foto solo con rutas del condominio; placas: residente abre, visita con pase abre y consume el pase, desconocida y vetada no abren; timbre: avisa, el residente autoriza, caseta registra con el pase de 30 min, otro residente no responde y hay freno de abuso; rondín solo con puntos propios; PIN de entrega de un solo uso y bloqueo tras 10 intentos |
+| Comunidad | un voto por vivienda, inquilino sin voto si es solo de propietarios, resultados por indiviso; tablero con respuestas sin teléfonos y solo el autor oculta; documentos ocultos no se entregan |
+| Conciliación | sugiere el pago del mismo monto y la vivienda del concepto; confirmar dos veces no duplica; otra administradora no ve sugerencias |

@@ -3,7 +3,10 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { Icono, type NombreIcono } from "@/components/vecino/Iconos";
 import { BotonGrande, Cargando, LinkInvalido, Pantalla, Tarjeta, Titulo } from "@/components/vecino/Piezas";
-import { cuando, datosVecino, dineroMXN, urlsFirmadas } from "@/lib/condominios";
+import { responderTimbre } from "@/app/vecino/actions";
+import { ActivarAvisos } from "@/components/vecino/ActivarAvisos";
+import { Refrescar } from "@/components/vecino/Refrescar";
+import { comunidadVecino, cuando, datosVecino, dineroMXN, urlsFirmadas } from "@/lib/condominios";
 
 export default function InicioVecino({ params }: { params: Promise<{ token: string }> }) {
   return (
@@ -45,10 +48,12 @@ function Novedad({ href, icono, titulo, detalle }: { href: string; icono: Nombre
 async function Contenido({ params }: { params: Promise<{ token: string }> }) {
   await connection();
   const { token } = await params;
-  const d = await datosVecino(token);
+  const [d, com] = await Promise.all([datosVecino(token), comunidadVecino(token)]);
   if (!d) return <LinkInvalido />;
   const base = `/vecino/${token}`;
-  const fotos = await urlsFirmadas([d.condominio.foto_path]);
+  const timbre = (com?.llamadas ?? []).filter((l) => l.estado === "esperando");
+  const votacion = com?.votaciones.find((v) => v.abierta && v.mi_voto === null && (!v.solo_propietarios || d.residente.tipo === "propietario"));
+  const fotos = await urlsFirmadas([d.condominio.foto_path, ...timbre.map((l) => l.foto_path)]);
   const foto = d.condominio.foto_path ? fotos.get(d.condominio.foto_path) : null;
   const pendientes = d.paquetes.filter((p) => !p.entregado_at);
   const activos = d.pases.filter((p) => p.estado === "activo" && new Date(p.hasta) > new Date() && (p.max_usos === null || p.usos < p.max_usos));
@@ -59,6 +64,7 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
 
   return (
     <Pantalla>
+      <Refrescar cada={12000} />
       <Titulo
         titulo={d.condominio.nombre}
         sub={d.vivienda.numero}
@@ -69,6 +75,34 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
           </Link>
         }
       />
+
+      {timbre.map((l) => (
+        <section key={l.id} role="alert" className="flex flex-col gap-3 rounded-2xl bg-[#17583A] p-5 text-white">
+          <div className="flex items-center gap-4">
+            {l.foto_path && fotos.get(l.foto_path) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotos.get(l.foto_path)} alt="" className="size-16 rounded-xl object-cover" />
+            ) : (
+              <Icono nombre="campana" className="size-10" />
+            )}
+            <div>
+              <p className="text-sm text-white/80">Tocan el timbre · {cuando(l.created_at)}</p>
+              <p className="text-2xl font-bold">{l.visitante}</p>
+              {l.motivo && <p className="text-base text-white/90">{l.motivo}</p>}
+            </div>
+          </div>
+          <form action={responderTimbre} className="grid grid-cols-2 gap-2">
+            <input type="hidden" name="token" value={token} />
+            <input type="hidden" name="llamada_id" value={l.id} />
+            <button name="decision" value="autorizar" className="min-h-14 rounded-xl bg-white text-lg font-bold text-[#17583A]">
+              Dejar pasar
+            </button>
+            <button name="decision" value="rechazar" className="min-h-14 rounded-xl border-2 border-white/60 text-lg font-semibold">
+              No lo conozco
+            </button>
+          </form>
+        </section>
+      ))}
 
       {foto ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -92,13 +126,17 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
         <Mosaico href={`${base}/paquetes`} icono="paquete" texto="Paquetes" cuenta={pendientes.length} />
         <Mosaico href={`${base}/amenidades`} icono="calendario" texto="Amenidades" />
         <Mosaico href={`${base}/mudanza`} icono="boleto" texto="Mudanza" />
+        <Mosaico href={`${base}/comunidad`} icono="persona" texto="Comunidad" cuenta={votacion ? 1 : 0} />
+        <Mosaico href={`${base}/accesos`} icono="llave" texto="Autos y entregas" />
       </div>
+      <ActivarAvisos token={token} />
 
       <div className="flex flex-col gap-3">
         {pendientes[0] && <Novedad href={`${base}/paquetes`} icono="paquete" titulo={pendientes.length > 1 ? `${pendientes.length} paquetes recibidos` : "Paquete recibido"} detalle={`Disponible en caseta${pendientes[0].paqueteria ? ` · ${pendientes[0].paqueteria}` : ""}`} />}
         {respuesta && <Novedad href={`${base}/caseta`} icono="chat" titulo="Caseta te respondió" detalle={respuesta.texto} />}
         {porRevisar && <Novedad href={`${base}/cuenta`} icono="banco" titulo="Pago en revisión" detalle={`${dineroMXN(porRevisar.monto_centavos)} · la administración lo confirmará`} />}
         {activos[0] && <Novedad href={`${base}/visitas/${activos[0].id}`} icono="qr" titulo={activos.length > 1 ? `${activos.length} pases activos` : `Pase de ${activos[0].visitante}`} detalle={cuando(activos[0].desde)} />}
+        {votacion && <Novedad href={`${base}/comunidad`} icono="check" titulo="Votación abierta" detalle={votacion.pregunta} />}
         {aviso && <Novedad href={`${base}/avisos`} icono="campana" titulo={aviso.titulo} detalle={aviso.cuerpo} />}
       </div>
 

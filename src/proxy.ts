@@ -5,7 +5,7 @@ import { supabaseConfigurado, supabaseKey, supabaseUrl } from "@/lib/supabase/co
 // Páginas sin cuenta: reporte por QR (/r), seguimiento del inquilino (/t),
 // link del proveedor (/c), aprobación del dueño (/a) , su reporte mensual (/e) y el link de pago del inquilino (/p).
 // Condominios: portal del residente (/vecino), caseta (/caseta), comité (/comite), pase de la visita (/pase) y alta (/alta). Se validan por token en el servidor.
-const PREFIJOS_PUBLICOS = ["/login", "/auth/", "/r/", "/t/", "/c/", "/a/", "/e/", "/p/", "/v/", "/i/", "/f/", "/s/", "/unirme/", "/pro/", "/red/unirme", "/agenda/", "/n/", "/vecino/", "/caseta/", "/comite/", "/pase/", "/alta/", "/api/cron/", "/api/stripe/", "/api/whatsapp", "/conoce", "/registro", "/privacidad", "/terminos", "/sw.js", "/manifest.webmanifest", "/icons/"];
+const PREFIJOS_PUBLICOS = ["/login", "/auth/", "/r/", "/t/", "/c/", "/a/", "/e/", "/p/", "/v/", "/i/", "/f/", "/s/", "/unirme/", "/pro/", "/red/unirme", "/agenda/", "/n/", "/vecino/", "/caseta/", "/comite/", "/pase/", "/alta/", "/timbre/", "/kiosco/", "/punto/", "/api/condominios/", "/api/cron/", "/api/stripe/", "/api/whatsapp", "/conoce", "/registro", "/privacidad", "/terminos", "/sw.js", "/manifest.webmanifest", "/icons/"];
 
 // Refresca la sesión en cada request y manda a /login a quien no la tenga.
 export async function proxy(request: NextRequest) {

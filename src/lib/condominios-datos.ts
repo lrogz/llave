@@ -110,3 +110,39 @@ export function estadoPase(p: { estado: string; hasta: string; max_usos: number 
   return { texto: "Activo", clase: "bg-[#D5E6CF] text-[#1E4D2B]", vigente: true };
 }
 
+
+export const TIPOS_TABLERO = [
+  ["recomendacion", "Recomendación"],
+  ["pregunta", "Pregunta"],
+  ["venta", "Venta"],
+  ["perdido", "Mascota u objeto perdido"],
+] as const;
+
+export const CATEGORIAS_DOCUMENTO = [
+  ["reglamento", "Reglamento"],
+  ["acta", "Acta"],
+  ["poliza", "Póliza / seguro"],
+  ["contrato", "Contrato"],
+  ["estado_financiero", "Estado financiero"],
+  ["otro", "Otro"],
+] as const;
+
+Object.assign(RESULTADO_ESCANEO, {
+  vetado: { titulo: "No puede entrar", detalle: "Está en la lista de vetados. Ya se avisó a la administración." },
+  punto_marcado: { titulo: "Punto de rondín marcado", detalle: "" },
+  punto_invalido: { titulo: "Punto no válido", detalle: "Este QR no es un punto de rondín de este condominio." },
+  pin_valido: { titulo: "PIN correcto", detalle: "Paquete registrado y residente avisado." },
+  pin_invalido: { titulo: "PIN no válido", detalle: "El código no existe, ya se usó o venció." },
+  bloqueado: { titulo: "Demasiados intentos", detalle: "Espera unos minutos y vuelve a intentar." },
+});
+
+// Lee el nombre de la zona legible por máquina (MRZ) del reverso de la INE: "APELLIDO<APELLIDO<<NOMBRE<NOMBRE".
+export function nombreDeMRZ(texto: string) {
+  const lineas = texto.toUpperCase().replace(/[«‹]/g, "<").split(/\r?\n/).map((l) => l.replace(/\s/g, ""));
+  const linea = lineas.find((l) => /^[A-ZÑ]+<[A-ZÑ<]*<<[A-ZÑ<]+$/.test(l) && l.length >= 10) ?? lineas.find((l) => /<<[A-ZÑ]/.test(l) && !/\d/.test(l));
+  if (!linea) return null;
+  const [apellidos, nombres] = linea.split("<<");
+  const limpia = (s: string) => s.split("<").filter(Boolean).map((p) => p.charAt(0) + p.slice(1).toLowerCase()).join(" ");
+  const nombre = `${limpia(nombres ?? "")} ${limpia(apellidos ?? "")}`.trim();
+  return nombre.length >= 4 ? nombre : null;
+}

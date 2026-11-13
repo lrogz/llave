@@ -6,10 +6,24 @@ import { BotonCopiar } from "@/components/BotonCopiar";
 import { ReporteCondominio, type Resumen as TipoResumen } from "@/components/ReporteCondominio";
 import { BUCKET } from "@/lib/datos";
 import { linkWhatsApp } from "@/lib/util";
-import { CATEGORIAS_GASTO, CONCEPTOS, cuando, dinero, etiquetaDe, mesTexto, vigencia } from "@/lib/condominios-datos";
+import { CATEGORIAS_DOCUMENTO, CATEGORIAS_GASTO, CONCEPTOS, TIPOS_TABLERO, cuando, dinero, etiquetaDe, mesTexto, vigencia } from "@/lib/condominios-datos";
 import {
   agregarResidente,
   ajustarSaldo,
+  atenderAlerta,
+  cerrarVotacion,
+  conciliar,
+  crearVotacion,
+  editarDocumento,
+  guardarAcuerdo,
+  guardarAsamblea,
+  guardarPunto,
+  guardarRelevadores,
+  guardarVehiculoAdmin,
+  guardarVetado,
+  importarBanco,
+  ocultarPublicacion,
+  subirDocumento,
   cargarCuota,
   crearViviendas,
   crearZona,
@@ -43,6 +57,12 @@ export type Ctx = {
     caseta_token: string;
     comite_token: string;
     alta_token: string;
+    timbre_token: string;
+    kiosco_token: string;
+    lpr_token: string;
+    pluma_url: string | null;
+    paquetes_url: string | null;
+    lpr_abre_visitas: boolean;
     comite_exporta: boolean;
     recibo_serie: string;
   };
@@ -96,7 +116,7 @@ function SelectVivienda({ viviendas, name = "vivienda_id" }: { viviendas: Viv[];
 // ─────────────────────────── Resumen ───────────────────────────
 export async function Resumen({ ctx }: { ctx: Ctx }) {
   const { supabase, c, hoy } = ctx;
-  const [rep, pagos, altas, tickets, reservas, mudanzas, manuales] = await Promise.all([
+  const [rep, pagos, altas, tickets, reservas, mudanzas, manuales, alertas] = await Promise.all([
     supabase.rpc("reporte_condominio", { p_condominio: c.id, p_mes: hoy }),
     supabase.from("pagos_condominio").select("id", { count: "exact", head: true }).eq("condominio_id", c.id).eq("estado", "pendiente"),
     supabase.from("solicitudes_alta").select("id", { count: "exact", head: true }).eq("condominio_id", c.id).eq("estado", "pendiente"),
@@ -104,9 +124,11 @@ export async function Resumen({ ctx }: { ctx: Ctx }) {
     supabase.from("reservas").select("id", { count: "exact", head: true }).eq("condominio_id", c.id).eq("estado", "solicitada"),
     supabase.from("mudanzas").select("id", { count: "exact", head: true }).eq("condominio_id", c.id).eq("estado", "solicitada"),
     supabase.from("accesos").select("id", { count: "exact", head: true }).eq("condominio_id", c.id).eq("revision", "pendiente"),
+    supabase.from("alertas_condominio").select("id", { count: "exact", head: true }).eq("condominio_id", c.id).is("atendida_at", null),
   ]);
   const r = rep.data as TipoResumen | null;
   const pend: [number, string, string][] = [
+    [alertas.count ?? 0, "alertas de seguridad", "seguridad"],
     [pagos.count ?? 0, "pagos por revisar", "cuotas"],
     [altas.count ?? 0, "altas de residentes por revisar", "viviendas"],
     [(reservas.count ?? 0) + (mudanzas.count ?? 0), "reservas o mudanzas por aprobar", "amenidades"],
@@ -384,7 +406,7 @@ export async function Viviendas({ ctx }: { ctx: Ctx }) {
             <Oculto c={c} />
             <h2 className={H2}>Importar padrón y saldos iniciales</h2>
             <p className="text-sm text-gris">
-              Copia desde Excel y pega. Columnas: <b>vivienda, zona, nombre, celular, tipo, saldo inicial</b> (positivo = debe, negativo = a favor). Revisa los saldos con la administración anterior antes de cargarlos.
+              Copia desde Excel y pega. Columnas: <b>vivienda, zona, nombre, celular, tipo, saldo inicial, indiviso %</b> (saldo positivo = debe, negativo = a favor; indiviso opcional, para votaciones ponderadas). Revisa los saldos con la administración anterior antes de cargarlos.
             </p>
             <textarea name="padron" rows={5} required placeholder={"Casa 1\tCalle Encino\tAna Ruiz\t4421234567\tpropietario\t2400"} className={`${CAMPO} py-2 font-mono text-xs`} />
             <Boton enviando="Importando…">Importar</Boton>
@@ -592,6 +614,7 @@ export async function Cuotas({ ctx }: { ctx: Ctx }) {
           <Vacio>Sin gastos este mes.</Vacio>
         )}
       </section>
+      <Conciliacion ctx={ctx} viviendas={viviendas} />
       <section className={CAJA}>
         <h2 className={H2}>Últimas revisiones</h2>
         <ul className="divide-y divide-borde-suave text-sm">
@@ -617,7 +640,7 @@ export async function Accesos({ ctx }: { ctx: Ctx }) {
     supabase.from("accesos").select("id, tipo, visitante, placa, metodo, autorizo, ocurrio_at, viviendas(numero), guardias(nombre)").eq("condominio_id", c.id).eq("revision", "pendiente").order("ocurrio_at"),
     supabase
       .from("accesos")
-      .select("id, tipo, visitante, placa, metodo, autorizo, ocurrio_at, revision, nota_revision, viviendas(numero), guardias(nombre)")
+      .select("id, tipo, visitante, placa, metodo, autorizo, ocurrio_at, revision, nota_revision, foto_path, viviendas(numero), guardias(nombre)")
       .eq("condominio_id", c.id)
       .gte("ocurrio_at", `${dia}T00:00:00-06:00`)
       .lt("ocurrio_at", `${dia}T23:59:59.999-06:00`)
@@ -625,6 +648,8 @@ export async function Accesos({ ctx }: { ctx: Ctx }) {
   ]);
   const viv = (a: { viviendas: unknown }) => (a.viviendas as { numero: string } | null)?.numero ?? "";
   const guardia = (a: { guardias: unknown }) => (a.guardias as { nombre: string } | null)?.nombre ?? "";
+  const fotos = await firmar(supabase, (accesos ?? []).map((a) => a.foto_path));
+  const METODO: Record<string, string> = { qr: "QR", manual: "Manual", sin_conexion: "Sin conexión", placa: "Placa", timbre: "Timbre", pin: "PIN" };
   return (
     <>
       <section className={CAJA}>
@@ -673,7 +698,8 @@ export async function Accesos({ ctx }: { ctx: Ctx }) {
                   <th className="pr-3">Vivienda</th>
                   <th className="pr-3">Autorizó</th>
                   <th className="pr-3">Método</th>
-                  <th>Guardia</th>
+                  <th className="pr-3">Guardia</th>
+                  <th />
                 </tr>
               </thead>
               <tbody className="divide-y divide-borde-suave">
@@ -687,8 +713,15 @@ export async function Accesos({ ctx }: { ctx: Ctx }) {
                     </td>
                     <td className="pr-3">{viv(a)}</td>
                     <td className="pr-3">{a.autorizo}</td>
-                    <td className="pr-3">{a.metodo === "qr" ? "QR" : a.metodo === "manual" ? "Manual" : "Sin conexión"}</td>
-                    <td>{guardia(a)}</td>
+                    <td className="pr-3">{METODO[a.metodo] ?? a.metodo}</td>
+                    <td className="pr-3">{guardia(a)}</td>
+                    <td>
+                      {a.foto_path && fotos.get(a.foto_path) && (
+                        <a href={fotos.get(a.foto_path)} target="_blank" rel="noopener" className="font-bold text-verde underline">
+                          Foto
+                        </a>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -932,6 +965,10 @@ export async function Avisos({ ctx }: { ctx: Ctx }) {
         </select>
         <input name="titulo" required maxLength={120} placeholder="Corte de agua el jueves" className={CAMPO} aria-label="Título" />
         <textarea name="cuerpo" required rows={4} maxLength={2000} placeholder="Horario, zonas afectadas y qué hacer." className={`${CAMPO} py-2`} aria-label="Mensaje" />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="urgente" className="size-4 accent-verde" />
+          <b>Urgente:</b> manda notificación al celular de los residentes que activaron avisos
+        </label>
         <Boton>Publicar aviso</Boton>
       </form>
       <section className={CAJA}>
@@ -966,6 +1003,8 @@ export async function Caseta({ ctx }: { ctx: Ctx }) {
     ["caseta", "Link de caseta", `${base}/caseta/${c.caseta_token}`, "Ábrelo en el celular o tablet de caseta y agrégalo a la pantalla de inicio. Cada guardia entra con su PIN."],
     ["comite", "Link del comité", `${base}/comite/${c.comite_token}`, "Solo lectura: cobranza, gastos, adeudos y reportes del mes."],
     ["alta", "Link de alta de residentes", `${base}/alta/${c.alta_token}`, "Compártelo en el grupo de vecinos: cada quien manda su INE y selfie y tú apruebas."],
+    ["timbre", "Timbre por QR", `${base}/timbre/${c.timbre_token}`, "Imprime el QR y pégalo en la entrada: la visita avisa a la vivienda desde su celular."],
+    ["kiosco", "Tablet del cuarto de paquetes", `${base}/kiosco/${c.kiosco_token}`, "Ábrelo en la tablet junto al cuarto de paquetes: el repartidor teclea el código del residente."],
   ];
   return (
     <>
@@ -991,6 +1030,9 @@ export async function Caseta({ ctx }: { ctx: Ctx }) {
             </div>
           </div>
         ))}
+        <a href={`/condominios/${c.id}/imprimir?que=timbre`} target="_blank" className="w-fit text-sm font-bold text-verde underline">
+          Imprimir QR del timbre
+        </a>
         <p className="text-xs text-gris">Cambiar un link invalida el anterior (útil si se perdió el celular de caseta o cambió el comité). Al cambiar el de caseta se cierra el turno abierto.</p>
       </section>
 
@@ -1096,6 +1138,541 @@ export async function Reportes({ ctx }: { ctx: Ctx }) {
         </div>
       </div>
       {data ? <ReporteCondominio r={data as TipoResumen} /> : <Vacio>No pudimos cargar el reporte.</Vacio>}
+    </>
+  );
+}
+
+// ─────────────────────────── Conciliación bancaria ───────────────────────────
+async function Conciliacion({ ctx, viviendas }: { ctx: Ctx; viviendas: Viv[] }) {
+  const { supabase, c, q } = ctx;
+  const [{ data: movs }, { data: sug }] = await Promise.all([
+    supabase.from("movimientos_banco").select("id, fecha, descripcion, referencia, monto_centavos").eq("condominio_id", c.id).eq("estado", "pendiente").order("fecha").limit(100),
+    supabase.rpc("sugerencias_conciliacion", { p_condominio: c.id }),
+  ]);
+  const s = new Map(((sug ?? []) as { movimiento_id: string; pago_id: string | null; vivienda_id: string | null; vivienda: string | null; razon: string | null }[]).map((x) => [x.movimiento_id, x]));
+  return (
+    <section id="conciliacion" className={CAJA}>
+      <h2 className={H2}>Conciliación bancaria</h2>
+      {q.banco && <Aviso>Se agregaron {q.banco} movimientos nuevos (los repetidos se ignoran).</Aviso>}
+      <form action={importarBanco} className="flex flex-col gap-2 rounded-xl bg-fondo p-3">
+        <Oculto c={c} />
+        <p className="text-sm text-gris">
+          Descarga de tu banca en línea el estado de cuenta de la cuenta del condominio en <b>CSV</b> y súbelo (o pégalo). Leemos los abonos y te sugerimos a qué vivienda corresponde cada uno.
+        </p>
+        <input name="archivo" type="file" accept=".csv,text/csv,text/plain" className="text-sm" aria-label="Estado de cuenta CSV" />
+        <textarea name="texto" rows={2} placeholder={"Fecha,Descripción,Referencia,Abono\n05/11/2026,SPEI CASA 24,123456,1450.00"} className={`${CAMPO} py-2 font-mono text-xs`} aria-label="Pegar estado de cuenta" />
+        <Boton estilo="claro" enviando="Leyendo…">
+          Leer estado de cuenta
+        </Boton>
+      </form>
+      {movs?.length ? (
+        <ul className="divide-y divide-borde-suave">
+          {movs.map((m) => {
+            const x = s.get(m.id);
+            return (
+              <li key={m.id} className="flex flex-col gap-2 py-3 text-sm">
+                <p>
+                  <b className="tabular-nums">{dinero(m.monto_centavos)}</b> · {m.fecha} · {[m.descripcion, m.referencia].filter(Boolean).join(" · ")}
+                </p>
+                <form action={conciliar} className="flex flex-wrap items-center gap-2">
+                  <Oculto c={c} />
+                  <input type="hidden" name="movimiento_id" value={m.id} />
+                  {x?.pago_id ? (
+                    <>
+                      <input type="hidden" name="pago_id" value={x.pago_id} />
+                      <span className="rounded-full bg-verde-claro px-3 py-1 text-xs font-bold text-verde-oscuro">
+                        {x.razon} · {x.vivienda}
+                      </span>
+                      <Boton name="accion" value="conciliar" className="min-h-10!">
+                        Confirmar pago
+                      </Boton>
+                    </>
+                  ) : (
+                    <>
+                      <select name="vivienda_id" defaultValue={x?.vivienda_id ?? ""} required className={`${CAMPO} w-44`} aria-label="Vivienda">
+                        <option value="" disabled>
+                          ¿De qué vivienda?
+                        </option>
+                        {viviendas.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.numero}
+                          </option>
+                        ))}
+                      </select>
+                      {x?.vivienda_id && <span className="text-xs text-verde-oscuro">{x.razon}</span>}
+                      <Boton name="accion" value="conciliar" className="min-h-10!">
+                        Registrar y emitir recibo
+                      </Boton>
+                    </>
+                  )}
+                  <button name="accion" value="ignorar" formNoValidate className="text-xs text-gris underline">
+                    No es cuota (ignorar)
+                  </button>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <Vacio>Sin movimientos por conciliar.</Vacio>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────── Seguridad ───────────────────────────
+export async function Seguridad({ ctx }: { ctx: Ctx }) {
+  const { supabase, c, base } = ctx;
+  const [viviendas, { data: alertas }, { data: vetados }, { data: vehiculos }, { data: puntos }, { data: marcas }, { data: lpr }, { data: aperturas }] = await Promise.all([
+    viviendasDe(ctx),
+    supabase.from("alertas_condominio").select("id, tipo, detalle, created_at, atendida_at, atendida_por").eq("condominio_id", c.id).order("created_at", { ascending: false }).limit(20),
+    supabase.from("vetados").select("id, nombre, placa, motivo, activo, created_at").eq("condominio_id", c.id).order("created_at", { ascending: false }),
+    supabase.from("vehiculos").select("id, placa, descripcion, viviendas(numero)").eq("condominio_id", c.id).order("placa"),
+    supabase.from("puntos_rondin").select("id, nombre, codigo, orden, activo").eq("condominio_id", c.id).order("orden"),
+    supabase.from("marcas_rondin").select("id, created_at, nota, puntos_rondin(nombre), guardias(nombre)").eq("condominio_id", c.id).order("created_at", { ascending: false }).limit(15),
+    supabase.from("eventos_lpr").select("id, placa, camara, resultado, created_at").eq("condominio_id", c.id).order("created_at", { ascending: false }).limit(15),
+    supabase.from("aperturas").select("id, puerta, motivo, actor, resultado, created_at").eq("condominio_id", c.id).order("created_at", { ascending: false }).limit(10),
+  ]);
+  const n = (x: unknown, k: string) => (x as Record<string, string> | null)?.[k] ?? "";
+  const abiertas = (alertas ?? []).filter((a) => !a.atendida_at);
+  return (
+    <>
+      <section className={CAJA}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className={H2}>Alertas ({abiertas.length} sin atender)</h2>
+          {abiertas.length > 1 && (
+            <form action={atenderAlerta}>
+              <Oculto c={c} />
+              <Boton estilo="claro" className="min-h-10!">
+                Marcar todas como atendidas
+              </Boton>
+            </form>
+          )}
+        </div>
+        {alertas?.length ? (
+          <ul className="divide-y divide-borde-suave text-sm">
+            {alertas.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className={a.atendida_at ? "text-gris" : ""}>
+                  <b>{a.tipo === "vetado" ? "Vetado" : a.tipo === "placa_desconocida" ? "Placa sin registro" : "PIN fallidos"}</b> · {cuando(a.created_at)} · {a.detalle}
+                  {a.atendida_at && ` · atendió ${a.atendida_por}`}
+                </span>
+                {!a.atendida_at && (
+                  <form action={atenderAlerta}>
+                    <Oculto c={c} />
+                    <input type="hidden" name="alerta_id" value={a.id} />
+                    <Boton estilo="claro" className="min-h-9! text-xs!">
+                      Atendida
+                    </Boton>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Vacio>Sin alertas.</Vacio>
+        )}
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className={CAJA}>
+          <h2 className={H2}>Lista de vetados</h2>
+          <p className="text-sm text-gris">Si alguien de la lista llega con pase, por timbre, a mano o en un auto con esa placa, la caseta lo ve en rojo y te llega una alerta.</p>
+          <ul className="divide-y divide-borde-suave text-sm">
+            {(vetados ?? []).map((v) => (
+              <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className={v.activo ? "" : "text-gris line-through"}>
+                  <b>{[v.nombre, v.placa].filter(Boolean).join(" · ")}</b> — {v.motivo}
+                </span>
+                <form action={guardarVetado}>
+                  <Oculto c={c} />
+                  <input type="hidden" name="vetado_id" value={v.id} />
+                  <Boton name="accion" value={v.activo ? "desactivar" : "activar"} estilo="claro" className="min-h-9! text-xs!">
+                    {v.activo ? "Quitar" : "Reactivar"}
+                  </Boton>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <form action={guardarVetado} className="grid gap-2 sm:grid-cols-2">
+            <Oculto c={c} />
+            <input name="nombre" placeholder="Nombre" className={CAMPO} aria-label="Nombre" />
+            <input name="placa" placeholder="Placa" className={CAMPO} aria-label="Placa" />
+            <input name="motivo" required minLength={3} placeholder="Motivo" className={`${CAMPO} sm:col-span-2`} aria-label="Motivo" />
+            <Boton className="sm:col-span-2">Agregar a la lista</Boton>
+          </form>
+        </section>
+
+        <section className={CAJA}>
+          <h2 className={H2}>Autos registrados ({vehiculos?.length ?? 0})</h2>
+          <p className="text-sm text-gris">Los residentes registran los suyos desde su portal. Con cámara de placas entran sin detenerse.</p>
+          <ul className="max-h-64 divide-y divide-borde-suave overflow-y-auto text-sm">
+            {(vehiculos ?? []).map((v) => (
+              <li key={v.id} className="flex items-center justify-between gap-2 py-1.5">
+                <span>
+                  <b className="font-mono">{v.placa}</b> · {n(v.viviendas, "numero")}
+                  {v.descripcion ? ` · ${v.descripcion}` : ""}
+                </span>
+                <form action={guardarVehiculoAdmin}>
+                  <Oculto c={c} />
+                  <input type="hidden" name="vehiculo_id" value={v.id} />
+                  <button className="text-xs text-naranja-oscuro underline">Quitar</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <form action={guardarVehiculoAdmin} className="grid gap-2 sm:grid-cols-3">
+            <Oculto c={c} />
+            <SelectVivienda viviendas={viviendas} />
+            <input name="placa" required placeholder="Placa" className={CAMPO} aria-label="Placa" />
+            <input name="descripcion" placeholder="Auto" className={CAMPO} aria-label="Auto" />
+            <Boton estilo="claro" className="sm:col-span-3">
+              Registrar auto
+            </Boton>
+          </form>
+        </section>
+
+        <section className={CAJA}>
+          <h2 className={H2}>Rondines</h2>
+          <p className="text-sm text-gris">Imprime los QR y pégalos en cada punto. El guardia los escanea con la app de caseta.</p>
+          <ul className="divide-y divide-borde-suave text-sm">
+            {(puntos ?? []).map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-2 py-1.5">
+                <span className={p.activo ? "" : "text-gris line-through"}>
+                  {p.orden}. {p.nombre}
+                </span>
+                <form action={guardarPunto}>
+                  <Oculto c={c} />
+                  <input type="hidden" name="punto_id" value={p.id} />
+                  <Boton name="accion" value={p.activo ? "desactivar" : "activar"} estilo="claro" className="min-h-9! text-xs!">
+                    {p.activo ? "Quitar" : "Reactivar"}
+                  </Boton>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <form action={guardarPunto} className="flex gap-2">
+            <Oculto c={c} />
+            <input name="orden" type="number" min={0} placeholder="#" className={`${CAMPO} w-16`} aria-label="Orden" />
+            <input name="nombre" required placeholder="Portón de servicio" className={CAMPO} aria-label="Nombre del punto" />
+            <Boton estilo="claro">Agregar</Boton>
+          </form>
+          <a href={`/condominios/${c.id}/imprimir?que=rondin`} target="_blank" className="w-fit text-sm font-bold text-verde underline">
+            Imprimir QR de los puntos
+          </a>
+          <h3 className="mt-2 text-sm font-bold">Últimas marcas</h3>
+          <ul className="text-xs text-gris">
+            {(marcas ?? []).map((m) => (
+              <li key={m.id}>
+                {cuando(m.created_at)} · {n(m.puntos_rondin, "nombre")} · {n(m.guardias, "nombre")}
+                {m.nota ? ` · ${m.nota}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <form action={guardarRelevadores} className={CAJA}>
+          <Oculto c={c} />
+          <h2 className={H2}>Pluma, cámara de placas y cuarto de paquetes</h2>
+          <p className="text-sm text-gris">
+            Sin configurar, todo funciona en <b>modo simulación</b> (se registra la apertura pero no se abre nada). Para abrir de verdad, el instalador conecta un relevador con API en la nube (Shelly, controlador de acceso) a la pluma y a la puerta del cuarto de paquetes.
+          </p>
+          <Etiqueta texto="Liga HTTPS del relevador de la pluma">
+            <input name="pluma_url" defaultValue={c.pluma_url ?? ""} placeholder="https://…" className={CAMPO} />
+          </Etiqueta>
+          <Etiqueta texto="Liga HTTPS del relevador del cuarto de paquetes">
+            <input name="paquetes_url" defaultValue={c.paquetes_url ?? ""} placeholder="https://…" className={CAMPO} />
+          </Etiqueta>
+          <Etiqueta texto="Autorización del relevador (se guarda oculta; escribe - para borrarla)">
+            <input name="pluma_auth" type="password" autoComplete="off" placeholder="Bearer …" className={CAMPO} />
+          </Etiqueta>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="lpr_abre_visitas" defaultChecked={c.lpr_abre_visitas} className="size-4 accent-verde" />
+            Las placas de visitas con pase vigente abren solas
+          </label>
+          <Boton>Guardar</Boton>
+          <div className="rounded-xl bg-fondo p-3 text-xs">
+            <p className="font-bold">Cámara de placas (LPR)</p>
+            <p className="mt-1">
+              Configura la cámara (o su software) para mandar cada lectura a: <code className="break-all">POST {base}/api/condominios/lpr</code> con el encabezado <code>x-bk-token</code> y el cuerpo{" "}
+              <code>{`{"placa":"UAB123C","camara":"Entrada"}`}</code>. Responde si se abre la pluma.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <BotonCopiar texto={c.lpr_token} etiqueta="Copiar x-bk-token" />
+            </div>
+          </div>
+        </form>
+      </div>
+      <form action={renovarLink} className="flex justify-end">
+        <Oculto c={c} />
+        <input type="hidden" name="cual" value="lpr" />
+        <Boton estilo="peligro" enviando="…">
+          Cambiar token de la cámara
+        </Boton>
+      </form>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className={CAJA}>
+          <h2 className={H2}>Lecturas de placas</h2>
+          <ul className="text-sm">
+            {(lpr ?? []).map((e) => (
+              <li key={e.id}>
+                {cuando(e.created_at)} · <b className="font-mono">{e.placa}</b> · {e.resultado}
+                {e.camara ? ` · ${e.camara}` : ""}
+              </li>
+            ))}
+            {!lpr?.length && <li className="text-gris">Aún no hay lecturas.</li>}
+          </ul>
+        </section>
+        <section className={CAJA}>
+          <h2 className={H2}>Aperturas</h2>
+          <ul className="text-sm">
+            {(aperturas ?? []).map((e) => (
+              <li key={e.id}>
+                {cuando(e.created_at)} · {e.puerta} · {e.motivo} · {e.actor} · <b>{e.resultado}</b>
+              </li>
+            ))}
+            {!aperturas?.length && <li className="text-gris">Sin aperturas registradas.</li>}
+          </ul>
+        </section>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────── Comunidad ───────────────────────────
+export async function Comunidad({ ctx }: { ctx: Ctx }) {
+  const { supabase, c } = ctx;
+  const [{ data: asambleas }, { data: acuerdos }, { data: votaciones }, { data: documentos }, { data: tablero }] = await Promise.all([
+    supabase.from("asambleas").select("*").eq("condominio_id", c.id).order("fecha", { ascending: false }),
+    supabase.from("acuerdos").select("id, texto, responsable, fecha_limite, estado").eq("condominio_id", c.id).order("created_at", { ascending: false }),
+    supabase.from("votaciones").select("id, pregunta, opciones, abre, cierra, solo_propietarios").eq("condominio_id", c.id).order("created_at", { ascending: false }),
+    supabase.from("documentos_condominio").select("id, titulo, categoria, storage_path, visible_residentes, created_at").eq("condominio_id", c.id).order("categoria"),
+    supabase.from("tablero").select("id, tipo, titulo, texto, created_at, residentes(nombre)").eq("condominio_id", c.id).eq("oculto", false).order("created_at", { ascending: false }).limit(20),
+  ]);
+  const resultados = new Map(
+    await Promise.all(
+      (votaciones ?? []).map(async (v) => [v.id, (await supabase.rpc("resultados_votacion", { p_votacion: v.id })).data as { votos: number; viviendas: number; opciones: { opcion: string; votos: number; indiviso: number }[] } | null] as const),
+    ),
+  );
+  const docs = await firmar(supabase, (documentos ?? []).map((d) => d.storage_path));
+  const ahora = new Date().toISOString();
+  return (
+    <>
+      <section className={CAJA}>
+        <h2 className={H2}>Votaciones</h2>
+        {(votaciones ?? []).map((v) => {
+          const r = resultados.get(v.id);
+          const abierta = v.abre <= ahora && v.cierra > ahora;
+          return (
+            <div key={v.id} className="rounded-xl border border-borde-suave p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <b>{v.pregunta}</b>
+                <span className="text-gris">
+                  {abierta ? `abierta hasta ${cuando(v.cierra)}` : `cerró ${cuando(v.cierra)}`} · {r?.votos ?? 0} de {r?.viviendas ?? 0} viviendas
+                </span>
+              </div>
+              <ul className="mt-2 grid gap-1">
+                {(r?.opciones ?? []).map((o) => (
+                  <li key={o.opcion} className="flex justify-between">
+                    <span>{o.opcion}</span>
+                    <span className="tabular-nums">
+                      {o.votos} votos{Number(o.indiviso) ? ` · ${Number(o.indiviso).toFixed(2)}% indiviso` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {abierta && (
+                <form action={cerrarVotacion} className="mt-2">
+                  <Oculto c={c} />
+                  <input type="hidden" name="votacion_id" value={v.id} />
+                  <Boton estilo="peligro" className="min-h-9! text-xs!">
+                    Cerrar ahora
+                  </Boton>
+                </form>
+              )}
+            </div>
+          );
+        })}
+        <form action={crearVotacion} className="grid gap-2 rounded-xl bg-fondo p-3 sm:grid-cols-2">
+          <Oculto c={c} />
+          <input name="pregunta" required minLength={5} placeholder="¿Aprobamos…?" className={`${CAMPO} sm:col-span-2`} aria-label="Pregunta" />
+          <textarea name="descripcion" rows={2} placeholder="Contexto (cotización, monto, plazo)" className={`${CAMPO} py-2 sm:col-span-2`} aria-label="Contexto" />
+          <textarea name="opciones" rows={3} required defaultValue={"Sí\nNo\nMe abstengo"} className={`${CAMPO} py-2`} aria-label="Opciones (una por renglón)" />
+          <div className="flex flex-col gap-2">
+            <Etiqueta texto="Cierra">
+              <input name="cierra" type="datetime-local" required className={CAMPO} />
+            </Etiqueta>
+            <select name="asamblea_id" className={CAMPO} aria-label="Asamblea" defaultValue="">
+              <option value="">Sin asamblea</option>
+              {(asambleas ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.titulo}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="solo_propietarios" defaultChecked className="size-4 accent-verde" /> Solo votan propietarios
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="en_vivo" className="size-4 accent-verde" /> Resultados visibles antes de cerrar
+          </label>
+          <Boton className="sm:col-span-2">Abrir votación (avisa a los residentes)</Boton>
+          <p className="text-xs text-gris sm:col-span-2">Un voto por vivienda. Si cargas el indiviso de cada vivienda (padrón, columna 7), el resultado también se muestra ponderado. Revisa con tu reglamento qué decisiones requieren asamblea presencial.</p>
+        </form>
+      </section>
+
+      <section className={CAJA}>
+        <h2 className={H2}>Asambleas y acuerdos</h2>
+        {(asambleas ?? []).map((a) => (
+          <details key={a.id} className="rounded-xl border border-borde-suave p-3">
+            <summary className="cursor-pointer text-sm">
+              <b>{a.titulo}</b> · {cuando(a.fecha)} · {a.estado}
+            </summary>
+            <form action={guardarAsamblea} className="mt-3 grid gap-2 sm:grid-cols-2">
+              <Oculto c={c} />
+              <input type="hidden" name="asamblea_id" value={a.id} />
+              <input name="titulo" defaultValue={a.titulo} className={CAMPO} aria-label="Título" />
+              <select name="estado" defaultValue={a.estado} className={CAMPO} aria-label="Estado">
+                <option value="convocada">Convocada</option>
+                <option value="celebrada">Celebrada</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+              <input name="lugar" defaultValue={a.lugar ?? ""} placeholder="Lugar o liga" className={`${CAMPO} sm:col-span-2`} aria-label="Lugar" />
+              <textarea name="orden_del_dia" rows={3} defaultValue={a.orden_del_dia ?? ""} placeholder="Orden del día" className={`${CAMPO} py-2`} aria-label="Orden del día" />
+              <textarea name="acta" rows={3} defaultValue={a.acta ?? ""} placeholder="Acta / minuta" className={`${CAMPO} py-2`} aria-label="Acta" />
+              <input type="hidden" name="tipo" value={a.tipo} />
+              <Boton estilo="claro" className="sm:col-span-2">
+                Guardar
+              </Boton>
+            </form>
+          </details>
+        ))}
+        <form action={guardarAsamblea} className="grid gap-2 rounded-xl bg-fondo p-3 sm:grid-cols-3">
+          <Oculto c={c} />
+          <input name="titulo" required placeholder="Asamblea ordinaria" className={CAMPO} aria-label="Título" />
+          <input name="fecha" type="datetime-local" required className={CAMPO} aria-label="Fecha" />
+          <select name="tipo" className={CAMPO} aria-label="Tipo">
+            <option value="ordinaria">Ordinaria</option>
+            <option value="extraordinaria">Extraordinaria</option>
+          </select>
+          <input name="lugar" placeholder="Lugar o liga de videollamada" className={`${CAMPO} sm:col-span-3`} aria-label="Lugar" />
+          <textarea name="orden_del_dia" rows={3} placeholder="Orden del día" className={`${CAMPO} py-2 sm:col-span-3`} aria-label="Orden del día" />
+          <Boton className="sm:col-span-3">Convocar asamblea</Boton>
+        </form>
+        <h3 className="mt-2 font-bold">Acuerdos</h3>
+        <ul className="divide-y divide-borde-suave text-sm">
+          {(acuerdos ?? []).map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span>
+                {a.texto}
+                <span className="block text-xs text-gris">
+                  {a.responsable ?? "Sin responsable"}
+                  {a.fecha_limite ? ` · ${a.fecha_limite}` : ""}
+                </span>
+              </span>
+              <form action={guardarAcuerdo} className="flex gap-2">
+                <Oculto c={c} />
+                <input type="hidden" name="acuerdo_id" value={a.id} />
+                <select name="estado" defaultValue={a.estado} className="min-h-9 rounded-lg border border-borde px-2 text-xs" aria-label="Estado">
+                  <option value="pendiente">Pendiente</option>
+                  <option value="en_proceso">En proceso</option>
+                  <option value="cumplido">Cumplido</option>
+                </select>
+                <Boton estilo="claro" className="min-h-9! text-xs!">
+                  Guardar
+                </Boton>
+              </form>
+            </li>
+          ))}
+        </ul>
+        <form action={guardarAcuerdo} className="grid gap-2 sm:grid-cols-4">
+          <Oculto c={c} />
+          <input name="texto" required placeholder="Acuerdo" className={`${CAMPO} sm:col-span-2`} aria-label="Acuerdo" />
+          <input name="responsable" placeholder="Responsable" className={CAMPO} aria-label="Responsable" />
+          <input name="fecha_limite" type="date" className={CAMPO} aria-label="Fecha límite" />
+          <select name="asamblea_id" className={`${CAMPO} sm:col-span-3`} aria-label="Asamblea" defaultValue="">
+            <option value="">Sin asamblea</option>
+            {(asambleas ?? []).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.titulo}
+              </option>
+            ))}
+          </select>
+          <Boton estilo="claro">Agregar acuerdo</Boton>
+        </form>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className={CAJA}>
+          <h2 className={H2}>Documentos</h2>
+          <ul className="divide-y divide-borde-suave text-sm">
+            {(documentos ?? []).map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <a href={docs.get(d.storage_path)} target="_blank" rel="noopener" className="font-semibold underline">
+                  {d.titulo}
+                </a>
+                <span className="flex items-center gap-2 text-xs">
+                  <span className="text-gris">
+                    {etiquetaDe(CATEGORIAS_DOCUMENTO, d.categoria)} · {d.visible_residentes ? "visible" : "solo administración"}
+                  </span>
+                  <form action={editarDocumento} className="flex gap-1">
+                    <Oculto c={c} />
+                    <input type="hidden" name="documento_id" value={d.id} />
+                    <button name="accion" value={d.visible_residentes ? "ocultar" : "mostrar"} className="underline">
+                      {d.visible_residentes ? "Ocultar" : "Mostrar"}
+                    </button>
+                    <button name="accion" value="borrar" className="text-naranja-oscuro underline">
+                      Borrar
+                    </button>
+                  </form>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <form action={subirDocumento} className="grid gap-2 sm:grid-cols-2">
+            <Oculto c={c} />
+            <input name="titulo" placeholder="Reglamento interno" className={CAMPO} aria-label="Título" />
+            <select name="categoria" className={CAMPO} aria-label="Categoría">
+              {CATEGORIAS_DOCUMENTO.map(([v, t]) => (
+                <option key={v} value={v}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <input name="archivo" type="file" required accept="application/pdf,image/*" className="text-sm" aria-label="Archivo" />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="visible" defaultChecked className="size-4 accent-verde" /> Visible para residentes
+            </label>
+            <Boton estilo="claro" className="sm:col-span-2">
+              Subir documento
+            </Boton>
+          </form>
+        </section>
+        <section className={CAJA}>
+          <h2 className={H2}>Tablero vecinal</h2>
+          <ul className="divide-y divide-borde-suave text-sm">
+            {(tablero ?? []).map((t) => (
+              <li key={t.id} className="flex items-start justify-between gap-2 py-2">
+                <span>
+                  <span className="text-xs text-gris">
+                    {etiquetaDe(TIPOS_TABLERO, t.tipo)} · {(t.residentes as unknown as { nombre: string } | null)?.nombre ?? "Vecino"} · {cuando(t.created_at)}
+                  </span>
+                  <b className="block">{t.titulo}</b>
+                  {t.texto}
+                </span>
+                <form action={ocultarPublicacion}>
+                  <Oculto c={c} />
+                  <input type="hidden" name="publicacion_id" value={t.id} />
+                  <button className="text-xs text-naranja-oscuro underline">Ocultar</button>
+                </form>
+              </li>
+            ))}
+            {!tablero?.length && <li className="py-2 text-gris">Sin publicaciones.</li>}
+          </ul>
+        </section>
+      </div>
     </>
   );
 }

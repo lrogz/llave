@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { randomUUID } from "node:crypto";
 import { abrirSesionCaseta, cerrarSesionCaseta, esToken, esUuid, mensajeError, nuevoSecreto, sesionCaseta, sha256 } from "@/lib/condominios";
+import { avisarEquipo, avisarVivienda } from "@/lib/push";
+import { abrirPuerta } from "@/lib/relevador";
+import { BUCKET } from "@/lib/datos";
 
 export type Resultado = { ok: boolean; motivo?: string; error?: string; [k: string]: unknown };
 
@@ -43,10 +47,55 @@ export async function iniciarTurno(_: { error?: string } | null, f: FormData): P
   redirect(`/caseta/${token}`);
 }
 
+// Después de una entrada: avisa al residente; si fue un vetado, a la administración.
+async function despues(token: string, r: Resultado) {
+  if (r.ok && typeof r.vivienda_id === "string") {
+    avisarVivienda(r.vivienda_id, (t) => ({ titulo: "Tu visita llegó", cuerpo: `${String(r.visitante ?? "Tu visita")} acaba de entrar.`, url: `/vecino/${t}/visitas`, tag: `visita-${String(r.acceso_id)}` }));
+  }
+  if (r.motivo === "vetado") {
+    const { data } = await createAdminClient().from("condominios").select("id, organizacion_id").eq("caseta_token", token).maybeSingle();
+    if (data) avisarEquipo(data.organizacion_id, { titulo: "🚫 Persona vetada en la entrada", cuerpo: `${String(r.visitante ?? "")}: ${String(r.detalle ?? "")}`, url: `/condominios/${data.id}?vista=seguridad`, tag: `vetado-${data.id}` });
+  }
+  return r;
+}
+
 export async function escanear(token: string, codigo: string) {
-  const limpio = txt(codigo, 200).split("/").pop()!.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const texto = txt(codigo, 300);
+  const limpio = texto.split("/").pop()!.split("?")[0].replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (limpio.length < 8) return { ok: false, motivo: "no_existe" } as Resultado;
-  return rpc(token, "caseta_entrada", { p_codigo: limpio });
+  // QR de un punto de rondín
+  if (/\/punto\//i.test(texto)) return rpc(token, "caseta_marcar_punto", { p_codigo: limpio, p_nota: null });
+  return despues(token, await rpc(token, "caseta_entrada", { p_codigo: limpio }));
+}
+
+export async function subirFotoAcceso(token: string, accesoId: string, f: FormData) {
+  const foto = f.get("foto");
+  if (!esUuid(accesoId) || !(foto instanceof File) || !foto.type.startsWith("image/") || foto.size > 3 * 1024 * 1024) return { ok: false, error: "Foto no válida." } as Resultado;
+  const s = await sesionCaseta(token);
+  if (!s) return { ok: false, motivo: "sin_turno" } as Resultado;
+  const admin = createAdminClient();
+  const { data: c } = await admin.from("condominios").select("id, organizacion_id").eq("caseta_token", token).maybeSingle();
+  if (!c) return { ok: false, error: "Link no válido." } as Resultado;
+  const ruta = `${c.organizacion_id}/condominios/${c.id}/accesos/${randomUUID()}.jpg`;
+  if ((await admin.storage.from(BUCKET).upload(ruta, foto, { contentType: foto.type })).error) return { ok: false, error: "No se pudo subir la foto." } as Resultado;
+  return rpc(token, "caseta_foto_acceso", { p_acceso: accesoId, p_path: ruta });
+}
+
+export async function abrirPluma(token: string, motivo: string) {
+  const s = await sesionCaseta(token);
+  if (!esToken(token) || !s) return { ok: false, motivo: "sin_turno" } as Resultado;
+  const { data, error } = await createAdminClient().rpc("caseta_relevador", { p_turno: s.turno, p_hash: s.hash, p_puerta: "pluma" });
+  if (error || !data) return { ok: false, motivo: "sin_turno" } as Resultado;
+  const d = data as { condominio_id: string; url: string | null; auth: string | null; guardia: string };
+  const resultado = await abrirPuerta({ condominioId: d.condominio_id, url: d.url, auth: d.auth, puerta: "pluma", motivo: txt(motivo, 120) || "Apertura desde caseta", actor: `caseta: ${d.guardia}` });
+  return { ok: resultado !== "error", resultado } as Resultado;
+}
+
+export async function usarPin(token: string, pin: string, paqueteria: string) {
+  if (!/^\d{6}$/.test(txt(pin, 6))) return { ok: false, motivo: "pin_invalido" } as Resultado;
+  const r = await rpc(token, "caseta_usar_pin", { p_pin: txt(pin, 6), p_paqueteria: txt(paqueteria, 60) });
+  if (r.ok && typeof r.vivienda_id === "string") avisarVivienda(r.vivienda_id, (t) => ({ titulo: "📦 Llegó tu paquete", cuerpo: "Está en caseta.", url: `/vecino/${t}/paquetes`, tag: `paq-${pin}` }));
+  return r;
 }
 
 export async function registrarSalida(token: string, entradaId: string) {
@@ -56,14 +105,14 @@ export async function registrarSalida(token: string, entradaId: string) {
 
 export async function entradaDeLista(token: string, paseId: string) {
   if (!esUuid(paseId)) return { ok: false, error: "Pase no válido." } as Resultado;
-  return rpc(token, "caseta_entrada_pase", { p_pase: paseId });
+  return despues(token, await rpc(token, "caseta_entrada_pase", { p_pase: paseId }));
 }
 
 export type RegistroManual = { ref: string; vivienda_id: string; tipo: "entrada" | "salida"; visitante: string; placa?: string; autorizo: string; metodo: "manual" | "sin_conexion"; ocurrio_at: string };
 
 export async function registroManual(token: string, r: RegistroManual) {
   if (!esUuid(r.ref) || !esUuid(r.vivienda_id)) return { ok: false, error: "Datos incompletos." } as Resultado;
-  return rpc(token, "caseta_manual", {
+  return despues(token, await rpc(token, "caseta_manual", {
     p_vivienda: r.vivienda_id,
     p_tipo: r.tipo === "salida" ? "salida" : "entrada",
     p_visitante: txt(r.visitante, 120),
@@ -72,7 +121,7 @@ export async function registroManual(token: string, r: RegistroManual) {
     p_metodo: r.metodo === "sin_conexion" ? "sin_conexion" : "manual",
     p_ocurrio_at: Number.isNaN(Date.parse(r.ocurrio_at)) ? new Date().toISOString() : r.ocurrio_at,
     p_ref: r.ref,
-  });
+  }));
 }
 
 export async function verChat(token: string, viviendaId: string) {
@@ -82,7 +131,9 @@ export async function verChat(token: string, viviendaId: string) {
 
 export async function responder(token: string, viviendaId: string, texto: string) {
   if (!esUuid(viviendaId) || !txt(texto)) return { ok: false } as Resultado;
-  return rpc(token, "caseta_mensaje", { p_vivienda: viviendaId, p_texto: txt(texto, 1000) });
+  const r = await rpc(token, "caseta_mensaje", { p_vivienda: viviendaId, p_texto: txt(texto, 1000) });
+  if (r.ok) avisarVivienda(viviendaId, (t) => ({ titulo: "Caseta te respondió", cuerpo: txt(texto, 140), url: `/vecino/${t}/caseta`, tag: `chat-${viviendaId}` }));
+  return r;
 }
 
 export async function marcarAtendido(token: string, viviendaId: string) {
@@ -92,7 +143,9 @@ export async function marcarAtendido(token: string, viviendaId: string) {
 
 export async function recibirPaquete(token: string, viviendaId: string, paqueteria: string, descripcion: string) {
   if (!esUuid(viviendaId)) return { ok: false, error: "Elige la vivienda." } as Resultado;
-  return rpc(token, "caseta_paquete", { p_vivienda: viviendaId, p_paqueteria: txt(paqueteria, 60), p_descripcion: txt(descripcion, 200) });
+  const r = await rpc(token, "caseta_paquete", { p_vivienda: viviendaId, p_paqueteria: txt(paqueteria, 60), p_descripcion: txt(descripcion, 200) });
+  if (r.ok) avisarVivienda(viviendaId, (t) => ({ titulo: "📦 Llegó tu paquete", cuerpo: `${txt(paqueteria, 60) || "Un paquete"} te espera en caseta.`, url: `/vecino/${t}/paquetes`, tag: `paq-${viviendaId}` }));
+  return r;
 }
 
 export async function paqueteAvisado(token: string, paqueteId: string) {

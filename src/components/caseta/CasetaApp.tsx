@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import {
+  abrirPluma,
   cerrarTurno,
   entradaDeLista,
   entregarPaquete,
@@ -14,11 +15,14 @@ import {
   registroManual,
   responder,
   salirSinCerrar,
+  subirFotoAcceso,
+  usarPin,
   verChat,
   type RegistroManual,
   type Resultado,
 } from "@/app/caseta/actions";
-import { RESULTADO_ESCANEO } from "@/lib/condominios-datos";
+import { RESULTADO_ESCANEO, nombreDeMRZ } from "@/lib/condominios-datos";
+import { comprimir } from "@/components/InputComprimido";
 import { Icono, type NombreIcono } from "@/components/vecino/Iconos";
 import { Escaner } from "./Escaner";
 
@@ -39,6 +43,13 @@ export type DatosCaseta = {
     manuales_pendientes: number;
     turno_anterior: { guardia: string; inicio: string; fin: string; notas: string | null } | null;
   };
+};
+export type ExtraCaseta = {
+  alertas: { id: string; tipo: string; detalle: string; created_at: string }[];
+  timbre: { id: string; visitante: string; vivienda: string; estado: string; respondio: string | null; created_at: string; pase_id: string | null; usado: boolean | null }[];
+  rondin: { id: string; nombre: string; ultima: string | null; en_mi_turno: number }[];
+  tiene_pluma: boolean;
+  vetados: { nombre: string | null; placa: string | null; motivo: string }[];
 };
 export type AgendaCaseta = {
   mudanzas: { tipo: string; vivienda: string; empresa: string; placa: string | null; inicio: string; fin: string; recursos: string[] }[];
@@ -121,7 +132,7 @@ function useEnLinea() {
   );
 }
 
-export function CasetaApp({ token, datos, agenda }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta }) {
+export function CasetaApp({ token, datos, agenda, extra }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta; extra: ExtraCaseta }) {
   const router = useRouter();
   const [tab, setTab] = useState("escanear");
   const enLinea = useEnLinea();
@@ -177,10 +188,22 @@ export function CasetaApp({ token, datos, agenda }: { token: string; datos: Dato
             Caseta · {datos.guardia} · desde {hora(datos.inicio)}
           </p>
         </div>
-        <span role="status" className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${enLinea ? "bg-menta/20 text-menta" : "bg-naranja text-white"}`}>
-          {enLinea ? "En línea" : "Sin conexión"}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <BotonPluma token={token} configurada={extra.tiene_pluma} deshabilitado={!enLinea} />
+          <span role="status" className={`rounded-full px-3 py-1 text-sm font-bold ${enLinea ? "bg-menta/20 text-menta" : "bg-naranja text-white"}`}>
+            {enLinea ? "En línea" : "Sin conexión"}
+          </span>
+        </div>
       </header>
+      {extra.alertas.length > 0 && (
+        <div role="alert" className="flex flex-col gap-1 bg-naranja-oscuro px-4 py-3 text-base">
+          {extra.alertas.slice(0, 3).map((a) => (
+            <p key={a.id}>
+              <b>{a.tipo === "vetado" ? "🚫 Vetado" : a.tipo === "placa_desconocida" ? "🚗 Placa sin registro" : "⚠️ Alerta"}</b> · {hora(a.created_at)} · {a.detalle}
+            </p>
+          ))}
+        </div>
+      )}
 
       {sesionPerdida && (
         <div role="alert" className="flex items-center justify-between gap-3 bg-naranja px-4 py-3 text-base font-semibold">
@@ -207,11 +230,11 @@ export function CasetaApp({ token, datos, agenda }: { token: string; datos: Dato
       )}
 
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 px-4 py-5 pb-28">
-        {tab === "escanear" && <PestanaEscanear token={token} datos={datos} enLinea={enLinea} revisar={revisar} cola={cola} guardarCola={guardar} />}
+        {tab === "escanear" && <PestanaEscanear token={token} datos={datos} extra={extra} enLinea={enLinea} revisar={revisar} cola={cola} guardarCola={guardar} />}
         {tab === "dentro" && <PestanaDentro token={token} datos={datos} revisar={revisar} />}
         {tab === "chat" && <PestanaChat token={token} datos={datos} revisar={revisar} />}
         {tab === "paquetes" && <PestanaPaquetes token={token} datos={datos} revisar={revisar} />}
-        {tab === "turno" && <PestanaTurno token={token} datos={datos} agenda={agenda} />}
+        {tab === "turno" && <PestanaTurno token={token} datos={datos} agenda={agenda} extra={extra} />}
       </main>
 
       <nav aria-label="Secciones de caseta" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0D1714] pb-[env(safe-area-inset-bottom)]">
@@ -243,6 +266,7 @@ export function CasetaApp({ token, datos, agenda }: { token: string; datos: Dato
 function PestanaEscanear({
   token,
   datos,
+  extra,
   enLinea,
   revisar,
   cola,
@@ -250,6 +274,7 @@ function PestanaEscanear({
 }: {
   token: string;
   datos: DatosCaseta;
+  extra: ExtraCaseta;
   enLinea: boolean;
   revisar: (r: Resultado) => Resultado;
   cola: RegistroManual[];
@@ -296,6 +321,8 @@ function PestanaEscanear({
           </dl>
         )}
         <p className="text-lg">{info.detalle || (r.error as string)}</p>
+        {r.ok && typeof r.acceso_id === "string" && <FotoAcceso token={token} accesoId={r.acceso_id} />}
+        {r.motivo === "punto_marcado" && typeof r.punto === "string" && <p className="text-2xl font-bold">{r.punto}</p>}
         <button type="button" autoFocus onClick={() => setResultado(null)} className={`${BOTON} ${r.ok ? "bg-tinta text-white" : "bg-white text-naranja-oscuro"}`}>
           Siguiente
         </button>
@@ -329,7 +356,56 @@ function PestanaEscanear({
       <button type="button" onClick={() => setManual(!manual)} className={`${BOTON} border-2 border-white/20`}>
         {manual ? "Volver al escáner" : "Registro manual (sin QR o sin internet)"}
       </button>
-      {manual && <FormManual token={token} datos={datos} enLinea={enLinea} revisar={revisar} cola={cola} guardarCola={guardarCola} onListo={() => setManual(false)} />}
+      {manual && (
+        <FormManual
+          token={token}
+          datos={datos}
+          enLinea={enLinea}
+          revisar={revisar}
+          cola={cola}
+          guardarCola={guardarCola}
+          onListo={(r) => {
+            setManual(false);
+            if (r) setResultado(r);
+          }}
+        />
+      )}
+
+      {!manual && extra.timbre.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-bold">Timbre (última hora)</h2>
+          <ul className="flex flex-col divide-y divide-white/10 rounded-2xl bg-white/5">
+            {extra.timbre.map((l) => (
+              <li key={l.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="min-w-0">
+                  <span className="block truncate text-lg font-semibold">{l.visitante}</span>
+                  <span className="block text-sm text-white/70">
+                    {l.vivienda} · {hora(l.created_at)} ·{" "}
+                    {l.estado === "esperando" ? "esperando respuesta" : l.estado === "autorizada" ? `autorizó ${l.respondio ?? ""}` : "no autorizada"}
+                  </span>
+                </span>
+                {l.estado === "autorizada" && l.pase_id && !l.usado && (
+                  <button
+                    type="button"
+                    disabled={ocupado || !enLinea}
+                    onClick={async () => {
+                      setOcupado(true);
+                      try {
+                        setResultado(revisar(await entradaDeLista(token, l.pase_id!)));
+                      } finally {
+                        setOcupado(false);
+                      }
+                    }}
+                    className="min-h-12 shrink-0 rounded-xl bg-menta px-4 font-bold text-tinta disabled:opacity-50"
+                  >
+                    Entrada
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {!manual && datos.autorizados_hoy.length > 0 && (
         <section className="flex flex-col gap-3">
@@ -384,9 +460,11 @@ function FormManual({
   revisar: (r: Resultado) => Resultado;
   cola: RegistroManual[];
   guardarCola: (c: RegistroManual[]) => void;
-  onListo: () => void;
+  onListo: (r?: Resultado) => void;
 }) {
   const [vivienda, setVivienda] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [leyendo, setLeyendo] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const v = datos.viviendas.find((x) => x.numero.toLowerCase() === vivienda.trim().toLowerCase());
@@ -408,16 +486,18 @@ function FormManual({
           ocurrio_at: new Date().toISOString(),
         };
         setEnviando(true);
+        let res: Resultado | undefined;
         try {
           if (!enLinea) throw new Error("offline");
-          const res = revisar(await registroManual(token, r));
+          res = revisar(await registroManual(token, r));
+          if (res.motivo === "vetado") return onListo(res);
           if (!res.ok) return setMensaje(res.error ?? "No se pudo registrar.");
         } catch {
           guardarCola([...cola, { ...r, metodo: "sin_conexion" }]);
         } finally {
           setEnviando(false);
         }
-        onListo();
+        onListo(res?.ok ? { ...res, motivo: "autorizado", visitante: r.visitante, vivienda: v.numero } : undefined);
       }}
       className="flex flex-col gap-4 rounded-2xl bg-white/5 p-4"
     >
@@ -449,7 +529,37 @@ function FormManual({
       ) : null}
       <label className="flex flex-col gap-1 text-base font-semibold">
         Nombre de quien entra o sale
-        <input name="visitante" required minLength={2} className={CAMPO} />
+        <input name="visitante" required minLength={2} value={nombre} onChange={(e) => setNombre(e.target.value)} className={CAMPO} />
+      </label>
+      <label className={`flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/25 text-base ${leyendo ? "opacity-60" : ""}`}>
+        <Icono nombre="camara" className="size-5" />
+        {leyendo ? "Leyendo la INE…" : "Leer nombre de la INE (foto del reverso)"}
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          disabled={leyendo}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            setLeyendo(true);
+            setMensaje(null);
+            try {
+              // El texto se lee en este teléfono; la foto no se guarda ni se envía.
+              const { recognize } = await import("tesseract.js");
+              const { data } = await recognize(await comprimir(f, 1600, 0.9), "eng");
+              const n = nombreDeMRZ(data.text);
+              if (n) setNombre(n);
+              else setMensaje("No se pudo leer. Toma la foto del reverso de frente, con buena luz, o escribe el nombre.");
+            } catch {
+              setMensaje("No se pudo leer la INE en este teléfono. Escribe el nombre.");
+            } finally {
+              setLeyendo(false);
+              e.target.value = "";
+            }
+          }}
+        />
       </label>
       <label className="flex flex-col gap-1 text-base font-semibold">
         Placas (opcional)
@@ -718,6 +828,7 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
           </button>
         </div>
       )}
+      <FormPinEntrega token={token} revisar={revisar} />
       <h2 className="text-lg font-bold">En caseta ({datos.entrega.paquetes.length})</h2>
       <ul className="flex flex-col divide-y divide-white/10 rounded-2xl bg-white/5">
         {datos.entrega.paquetes.map((p) => (
@@ -781,7 +892,7 @@ function Bloque({ titulo, n, children }: { titulo: string; n: number; children: 
   );
 }
 
-function PestanaTurno({ token, datos, agenda }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta }) {
+function PestanaTurno({ token, datos, agenda, extra }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta; extra: ExtraCaseta }) {
   const e = datos.entrega;
   return (
     <>
@@ -839,6 +950,23 @@ function PestanaTurno({ token, datos, agenda }: { token: string; datos: DatosCas
           </li>
         ))}
       </Bloque>
+      <Bloque titulo="Rondín (escanea el QR de cada punto)" n={extra.rondin.length}>
+        {extra.rondin.map((p) => (
+          <li key={p.id} className="flex justify-between gap-3">
+            <span>
+              {p.en_mi_turno > 0 ? "✅" : "⬜"} {p.nombre}
+            </span>
+            <span className="text-white/60">{p.ultima ? `último ${hora(p.ultima)}` : "sin marcar"}</span>
+          </li>
+        ))}
+      </Bloque>
+      <Bloque titulo="Lista de vetados" n={extra.vetados.length}>
+        {extra.vetados.map((v, i) => (
+          <li key={i}>
+            <b>{[v.nombre, v.placa].filter(Boolean).join(" · ")}</b> — {v.motivo}
+          </li>
+        ))}
+      </Bloque>
       {e.manuales_pendientes > 0 && <p className="text-sm text-white/70">{e.manuales_pendientes} registros manuales esperan revisión de la administración.</p>}
       <form action={cerrarTurno} className="flex flex-col gap-3 rounded-2xl bg-white/5 p-4">
         <input type="hidden" name="token" value={token} />
@@ -857,5 +985,84 @@ function PestanaTurno({ token, datos, agenda }: { token: string; datos: DatosCas
         </button>
       </form>
     </>
+  );
+}
+
+// Abre la pluma por el relevador del condominio (o simulación si no está configurado).
+function BotonPluma({ token, configurada, deshabilitado }: { token: string; configurada: boolean; deshabilitado: boolean }) {
+  const [estado, setEstado] = useState<string | null>(null);
+  return (
+    <button
+      type="button"
+      disabled={deshabilitado || estado === "…"}
+      onClick={async () => {
+        setEstado("…");
+        const r = await abrirPluma(token, "Apertura manual desde caseta");
+        setEstado(r.ok ? (r.resultado === "simulado" ? "Simulado" : "Abierta") : "Error");
+        setTimeout(() => setEstado(null), 3000);
+      }}
+      title={configurada ? "Abrir la pluma" : "Sin relevador configurado: se registra como simulación"}
+      className="min-h-10 rounded-full border-2 border-menta px-3 text-sm font-bold text-menta disabled:opacity-50"
+    >
+      {estado ?? "Abrir pluma"}
+    </button>
+  );
+}
+
+// Foto de quien entra (opcional), ligada al registro de acceso.
+function FotoAcceso({ token, accesoId }: { token: string; accesoId: string }) {
+  const [estado, setEstado] = useState<"listo" | "subiendo" | "ok" | "error">("listo");
+  if (estado === "ok") return <p className="text-lg font-bold">📸 Foto guardada</p>;
+  return (
+    <label className={`flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-current text-lg font-bold ${estado === "subiendo" ? "opacity-60" : ""}`}>
+      <Icono nombre="camara" />
+      {estado === "subiendo" ? "Subiendo…" : estado === "error" ? "No se pudo, intenta otra vez" : "Tomar foto de la entrada"}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="sr-only"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          setEstado("subiendo");
+          const datos = new FormData();
+          datos.set("foto", await comprimir(f, 1280, 0.75));
+          const r = await subirFotoAcceso(token, accesoId, datos);
+          setEstado(r.ok ? "ok" : "error");
+        }}
+      />
+    </label>
+  );
+}
+
+function FormPinEntrega({ token, revisar }: { token: string; revisar: (r: Resultado) => Resultado }) {
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const formulario = e.currentTarget;
+        const f = new FormData(formulario);
+        setOcupado(true);
+        const r = revisar(await usarPin(token, String(f.get("pin") ?? ""), String(f.get("paqueteria") ?? "")));
+        setOcupado(false);
+        const info = RESULTADO_ESCANEO[String(r.motivo ?? "")];
+        setMsg({ ok: !!r.ok, texto: r.ok ? `Paquete registrado para ${String(r.vivienda)}. Ya se le avisó.` : (info?.detalle ?? r.error ?? "No se pudo.") });
+        if (r.ok) formulario.reset();
+      }}
+      className="flex flex-col gap-2 rounded-2xl bg-white/5 p-4"
+    >
+      <p className="font-bold">Entrega con código del residente</p>
+      <div className="flex gap-2">
+        <input name="pin" inputMode="numeric" pattern="[0-9]{6}" required placeholder="6 números" className={`${CAMPO} font-mono tracking-[0.3em]`} aria-label="Código de entrega" />
+        <button disabled={ocupado} className={`${BOTON} shrink-0 bg-menta text-tinta`}>
+          Validar
+        </button>
+      </div>
+      <input name="paqueteria" placeholder="Paquetería (opcional)" className={CAMPO} aria-label="Paquetería" />
+      {msg && <p className={`rounded-xl px-3 py-2 ${msg.ok ? "bg-menta/20 text-menta" : "bg-naranja"}`}>{msg.texto}</p>}
+    </form>
   );
 }

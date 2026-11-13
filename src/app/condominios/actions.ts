@@ -3,7 +3,9 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createHash } from "node:crypto";
 import { sesionConOrg } from "@/lib/sesion";
+import { avisarCondominio } from "@/lib/push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { estadoPlan, puedeAgregar } from "@/lib/plan";
 import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
@@ -44,6 +46,7 @@ export async function cargarEjemplo() {
   if (!puedeAgregar(await estadoPlan(supabase, org.id), 2)) redirect("/plan?limite=1");
   const { error } = await supabase.rpc("demo_condominios", { p_org: org.id });
   falla(error, "No pudimos cargar los ejemplos.");
+  await supabase.rpc("demo_condominios_extra", { p_org: org.id });
   revalidatePath("/condominios");
   redirect("/condominios?ejemplo=1");
 }
@@ -73,6 +76,14 @@ export async function editarCondominio(f: FormData) {
 export async function renovarLink(f: FormData) {
   const { supabase, c } = await condominio(f);
   const cual = txt(f, "cual", 10);
+  const columnas: Record<string, [string, number]> = { timbre: ["timbre_token", 16], kiosco: ["kiosco_token", 24], lpr: ["lpr_token", 32] };
+  if (columnas[cual]) {
+    const [col, largo] = columnas[cual];
+    const { data: nuevo } = await supabase.rpc("token_opaco", { largo });
+    falla((await supabase.from("condominios").update({ [col]: nuevo }).eq("id", c.id)).error, "No pudimos cambiar el link.");
+    revalidatePath(`/condominios/${c.id}`);
+    return;
+  }
   const { error } = cual === "alta" ? await supabase.rpc("renovar_alta_token", { p_condominio: c.id }) : await supabase.rpc("renovar_token_condominio", { p_condominio: c.id, p_cual: cual });
   falla(error, "Solo la propietaria o un admin puede cambiar los links.");
   revalidatePath(`/condominios/${c.id}`);
@@ -134,6 +145,10 @@ export async function importarPadron(f: FormData) {
   );
   const { data: vs } = await supabase.from("viviendas").select("id, numero").eq("condominio_id", c.id);
   const viv = new Map((vs ?? []).map((v) => [v.numero, v.id as string]));
+  for (const l of filas) {
+    const ind = Number(String(l[6] ?? "").replace(/[^0-9.]/g, ""));
+    if (l[6] && ind > 0 && ind <= 100 && viv.has(l[0])) await supabase.from("viviendas").update({ indiviso: ind }).eq("id", viv.get(l[0])!);
+  }
   const residentes = filas
     .filter((l) => l[2] && viv.has(l[0]))
     .map((l) => ({ organizacion_id: c.organizacion_id, condominio_id: c.id, vivienda_id: viv.get(l[0])!, nombre: l[2].slice(0, 120), telefono: l[3]?.slice(0, 30) || null, tipo: /inq/i.test(l[4] ?? "") ? "inquilino" : "propietario" }));
@@ -300,8 +315,12 @@ export async function revisarAcceso(f: FormData) {
 export async function publicarAviso(f: FormData) {
   const { supabase, c, user } = await condominio(f);
   const zona = txt(f, "zona_id", 40);
-  const { error } = await supabase.from("avisos_condominio").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, zona_id: esUuid(zona) ? zona : null, titulo: txt(f, "titulo", 120), cuerpo: txt(f, "cuerpo", 2000), creado_por: user.email });
+  const urgente = f.get("urgente") === "on";
+  const titulo = txt(f, "titulo", 120);
+  const { error } = await supabase.from("avisos_condominio").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, zona_id: esUuid(zona) ? zona : null, titulo, cuerpo: txt(f, "cuerpo", 2000), creado_por: user.email, urgente });
   falla(error, "Escribe título y mensaje.");
+  // Urgente: notificación en el celular de cada residente (de la zona) que activó avisos.
+  if (urgente) avisarCondominio(c.id, esUuid(zona) ? zona : null, (t) => ({ titulo: `⚠️ ${titulo}`, cuerpo: txt(f, "cuerpo", 160), url: `/vecino/${t}/avisos`, tag: `aviso-${Date.now()}` }));
   revalidatePath(`/condominios/${c.id}`);
   redirect(ruta(c.id, "avisos", "&publicado=1"));
 }
@@ -400,4 +419,250 @@ export async function seguimientoReporte(f: FormData) {
   const { error } = await supabase.from("tickets").update(cambios).eq("id", id);
   falla(error, "No pudimos guardar el seguimiento.");
   revalidatePath(`/tickets/${id}`);
+}
+
+// ─────────────────────────── Seguridad ───────────────────────────
+export async function guardarVetado(f: FormData) {
+  const { supabase, c, user } = await condominio(f);
+  const id = txt(f, "vetado_id", 40);
+  if (esUuid(id)) {
+    falla((await supabase.from("vetados").update({ activo: txt(f, "accion") === "activar" }).eq("id", id).eq("condominio_id", c.id)).error, "No pudimos guardar.");
+  } else {
+    const { error } = await supabase.from("vetados").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, nombre: txt(f, "nombre", 120) || null, placa: txt(f, "placa", 12).toUpperCase() || null, motivo: txt(f, "motivo", 300), creado_por: user.email });
+    falla(error, "Escribe nombre o placa, y el motivo.");
+  }
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function atenderAlerta(f: FormData) {
+  const { supabase, c, user } = await condominio(f);
+  const id = txt(f, "alerta_id", 40);
+  const q = supabase.from("alertas_condominio").update({ atendida_at: new Date().toISOString(), atendida_por: user.email }).eq("condominio_id", c.id).is("atendida_at", null);
+  falla((esUuid(id) ? await q.eq("id", id) : await q).error, "No pudimos guardar.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarVehiculoAdmin(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const borrar = txt(f, "vehiculo_id", 40);
+  if (esUuid(borrar)) {
+    falla((await supabase.from("vehiculos").delete().eq("id", borrar).eq("condominio_id", c.id)).error, "No pudimos quitarlo.");
+  } else {
+    const vivienda = txt(f, "vivienda_id", 40);
+    const placa = txt(f, "placa", 12).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!esUuid(vivienda) || placa.length < 4) throw new Error("Elige la vivienda y escribe la placa.");
+    falla((await supabase.from("vehiculos").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, vivienda_id: vivienda, placa, descripcion: txt(f, "descripcion", 60) || null })).error, "Esa placa ya está registrada.");
+  }
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarPunto(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "punto_id", 40);
+  if (esUuid(id)) falla((await supabase.from("puntos_rondin").update({ activo: txt(f, "accion") === "activar" }).eq("id", id).eq("condominio_id", c.id)).error, "No pudimos guardar.");
+  else falla((await supabase.from("puntos_rondin").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, nombre: txt(f, "nombre", 80), orden: Number(txt(f, "orden", 3)) || 0 })).error, "Escribe el nombre del punto.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarRelevadores(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const url = (k: string) => {
+    const v = txt(f, k, 300);
+    if (v && !/^https:\/\/[^\s]+$/.test(v)) throw new Error("Las ligas deben empezar con https://");
+    return v || null;
+  };
+  const cambios: Record<string, unknown> = { pluma_url: url("pluma_url"), paquetes_url: url("paquetes_url"), lpr_abre_visitas: f.get("lpr_abre_visitas") === "on" };
+  const auth = txt(f, "pluma_auth", 300);
+  if (auth) cambios.pluma_auth = auth === "-" ? null : auth;
+  falla((await supabase.from("condominios").update(cambios).eq("id", c.id)).error, "Solo la propietaria o un admin puede configurar los relevadores.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+// ─────────────────────────── Comunidad ───────────────────────────
+export async function guardarAsamblea(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "asamblea_id", 40);
+  const fila: Record<string, unknown> = {
+    titulo: txt(f, "titulo", 120),
+    tipo: txt(f, "tipo") === "extraordinaria" ? "extraordinaria" : "ordinaria",
+    lugar: txt(f, "lugar", 200) || null,
+    orden_del_dia: txt(f, "orden_del_dia", 4000) || null,
+    acta: txt(f, "acta", 20000) || null,
+    estado: ["convocada", "celebrada", "cancelada"].includes(txt(f, "estado")) ? txt(f, "estado") : "convocada",
+  };
+  const fecha = txt(f, "fecha", 16);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(fecha)) fila.fecha = `${fecha}:00-06:00`;
+  const { error } = esUuid(id)
+    ? await supabase.from("asambleas").update(fila).eq("id", id).eq("condominio_id", c.id)
+    : await supabase.from("asambleas").insert({ ...fila, organizacion_id: c.organizacion_id, condominio_id: c.id });
+  falla(error, "Revisa título y fecha.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarAcuerdo(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "acuerdo_id", 40);
+  if (esUuid(id)) {
+    falla((await supabase.from("acuerdos").update({ estado: txt(f, "estado", 20) }).eq("id", id).eq("condominio_id", c.id)).error, "No pudimos guardar.");
+  } else {
+    const asamblea = txt(f, "asamblea_id", 40);
+    falla(
+      (await supabase.from("acuerdos").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, asamblea_id: esUuid(asamblea) ? asamblea : null, texto: txt(f, "texto", 500), responsable: txt(f, "responsable", 80) || null, fecha_limite: txt(f, "fecha_limite", 10) || null })).error,
+      "Escribe el acuerdo.",
+    );
+  }
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function crearVotacion(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const opciones = txt(f, "opciones", 600).split(/\r?\n/).map((x) => x.trim().slice(0, 80)).filter(Boolean);
+  if (opciones.length < 2) throw new Error("Escribe al menos dos opciones, una por renglón.");
+  const cierra = txt(f, "cierra", 16);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(cierra)) throw new Error("Elige cuándo cierra.");
+  const asamblea = txt(f, "asamblea_id", 40);
+  const { error } = await supabase.from("votaciones").insert({
+    organizacion_id: c.organizacion_id,
+    condominio_id: c.id,
+    asamblea_id: esUuid(asamblea) ? asamblea : null,
+    pregunta: txt(f, "pregunta", 300),
+    descripcion: txt(f, "descripcion", 1000) || null,
+    opciones,
+    cierra: `${cierra}:00-06:00`,
+    solo_propietarios: f.get("solo_propietarios") === "on",
+    resultados_en_vivo: f.get("en_vivo") === "on",
+  });
+  falla(error, "Revisa la pregunta y la fecha de cierre.");
+  avisarCondominio(c.id, null, (t) => ({ titulo: "🗳️ Nueva votación", cuerpo: txt(f, "pregunta", 140), url: `/vecino/${t}/comunidad`, tag: `vot-${c.id}` }));
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function cerrarVotacion(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "votacion_id", 40);
+  if (!esUuid(id)) return;
+  falla((await supabase.from("votaciones").update({ cierra: new Date().toISOString() }).eq("id", id).eq("condominio_id", c.id).gt("cierra", new Date().toISOString())).error, "No pudimos cerrarla.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function subirDocumento(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const archivo = f.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) throw new Error("Elige el archivo.");
+  if (archivo.size > MAX_ENVIO) throw new Error("El archivo pesa más de 4 MB.");
+  const ruta = `${c.organizacion_id}/condominios/${c.id}/documentos/${randomUUID()}.${extension(archivo.name, archivo.type)}`;
+  if ((await supabase.storage.from(BUCKET).upload(ruta, archivo, { contentType: archivo.type })).error) throw new Error("No pudimos subir el archivo.");
+  falla(
+    (await supabase.from("documentos_condominio").insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, titulo: txt(f, "titulo", 120) || archivo.name.slice(0, 120), categoria: txt(f, "categoria", 30) || "otro", storage_path: ruta, visible_residentes: f.get("visible") === "on" })).error,
+    "No pudimos guardar el documento.",
+  );
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function editarDocumento(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "documento_id", 40);
+  if (!esUuid(id)) return;
+  if (txt(f, "accion") === "borrar") {
+    const { data: d } = await supabase.from("documentos_condominio").select("storage_path").eq("id", id).eq("condominio_id", c.id).maybeSingle();
+    falla((await supabase.from("documentos_condominio").delete().eq("id", id)).error, "Solo la propietaria o un admin puede borrar documentos.");
+    if (d) await supabase.storage.from(BUCKET).remove([d.storage_path]);
+  } else {
+    falla((await supabase.from("documentos_condominio").update({ visible_residentes: txt(f, "accion") === "mostrar" }).eq("id", id).eq("condominio_id", c.id)).error, "No pudimos guardar.");
+  }
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function ocultarPublicacion(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "publicacion_id", 40);
+  if (esUuid(id)) falla((await supabase.from("tablero").update({ oculto: true }).eq("id", id).eq("condominio_id", c.id)).error, "No pudimos ocultarla.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+// ─────────────────────────── Conciliación bancaria ───────────────────────────
+// Lee un estado de cuenta pegado o subido (CSV de cualquier banco): detecta columnas de fecha, concepto, referencia y abono.
+function leerEstadoCuenta(texto: string) {
+  const lineas = texto.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+  const sep = [";", "\t", ","].map((s) => [s, (lineas[0]?.match(new RegExp(s === "\t" ? "\t" : `\\${s}`, "g")) ?? []).length] as const).sort((a, b) => b[1] - a[1])[0][0];
+  const partir = (l: string) => {
+    const out: string[] = [];
+    let cur = "";
+    let comillas = false;
+    for (const ch of l) {
+      if (ch === '"') comillas = !comillas;
+      else if (ch === sep && !comillas) {
+        out.push(cur.trim());
+        cur = "";
+      }
+      else cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  };
+  const filas = lineas.map(partir);
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const enc = filas[0].map(norm);
+  const col = (...k: string[]) => enc.findIndex((h) => k.some((x) => h.includes(x)));
+  const iF = col("fecha", "date");
+  const iD = col("descripcion", "concepto", "detalle", "movimiento");
+  const iR = col("referencia", "rastreo", "folio");
+  const iA = col("abono", "deposito", "credito", "ingreso", "importe", "monto");
+  if (iF < 0 || iA < 0) throw new Error("No encontramos las columnas de fecha y abono/depósito en el encabezado.");
+  const fecha = (v: string) => {
+    let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+    if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    return null;
+  };
+  const vistos = new Map<string, number>();
+  return filas
+    .slice(1)
+    .map((f) => {
+      const monto = aCentavos((f[iA] ?? "").replace(/[$\s]/g, ""));
+      const fe = fecha(f[iF] ?? "");
+      if (!monto || !fe || (f[iA] ?? "").trim().startsWith("-")) return null;
+      const descripcion = (iD >= 0 ? f[iD] : "")?.slice(0, 200) || null;
+      const referencia = (iR >= 0 ? f[iR] : "")?.slice(0, 60) || null;
+      const base = `${fe}|${monto}|${descripcion}|${referencia}`;
+      const n = (vistos.get(base) ?? 0) + 1;
+      vistos.set(base, n);
+      return { fecha: fe, monto_centavos: monto, descripcion, referencia, huella: createHash("sha256").update(`${base}|${n}`).digest("hex") };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+}
+
+export async function importarBanco(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  let texto = txt(f, "texto", 500000);
+  const archivo = f.get("archivo");
+  if (archivo instanceof File && archivo.size > 0) {
+    if (archivo.size > MAX_ENVIO) throw new Error("El archivo pesa más de 4 MB.");
+    texto = await archivo.text();
+  }
+  if (!texto) throw new Error("Sube el CSV o pega el estado de cuenta.");
+  const movs = leerEstadoCuenta(texto);
+  if (!movs.length) throw new Error("No encontramos abonos en el archivo.");
+  const { error, count } = await supabase
+    .from("movimientos_banco")
+    .upsert(movs.map((m) => ({ ...m, organizacion_id: c.organizacion_id, condominio_id: c.id })), { onConflict: "condominio_id,huella", ignoreDuplicates: true, count: "exact" });
+  falla(error, "No pudimos guardar los movimientos.");
+  revalidatePath(`/condominios/${c.id}`);
+  redirect(ruta(c.id, "cuotas", `&banco=${count ?? movs.length}#conciliacion`));
+}
+
+export async function conciliar(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const mov = txt(f, "movimiento_id", 40);
+  if (!esUuid(mov)) return;
+  if (txt(f, "accion") === "ignorar") {
+    falla((await supabase.from("movimientos_banco").update({ estado: "ignorado" }).eq("id", mov).eq("condominio_id", c.id)).error, "No pudimos guardar.");
+  } else {
+    const pago = txt(f, "pago_id", 40);
+    const vivienda = txt(f, "vivienda_id", 40);
+    const { error } = await supabase.rpc("conciliar_movimiento", { p_movimiento: mov, p_pago: esUuid(pago) ? pago : null, p_vivienda: esUuid(vivienda) ? vivienda : null });
+    falla(error, "No pudimos conciliar.");
+  }
+  revalidatePath(`/condominios/${c.id}`);
 }

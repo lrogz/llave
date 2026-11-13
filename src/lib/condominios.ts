@@ -110,3 +110,24 @@ export async function amenidadesVecino(token: string): Promise<DatosAmenidades |
   const { data, error } = await createAdminClient().rpc("vecino_amenidades", { p_token: token });
   return error || !data ? null : (data as DatosAmenidades);
 }
+
+export type DatosComunidad = {
+  votaciones: {
+    id: string; pregunta: string; descripcion: string | null; opciones: string[]; abre: string; cierra: string; abierta: boolean;
+    solo_propietarios: boolean; mi_voto: number | null;
+    resultados: { votos: number; viviendas: number; participacion_pct: number | null; opciones: { opcion: string; votos: number; indiviso: number }[] } | null;
+  }[];
+  asambleas: { id: string; titulo: string; tipo: string; fecha: string; lugar: string | null; orden_del_dia: string | null; acta: string | null; estado: string }[];
+  acuerdos: { texto: string; responsable: string | null; fecha_limite: string | null; estado: string }[];
+  documentos: { id: string; titulo: string; categoria: string; path: string; fecha: string }[];
+  tablero: { id: string; tipo: string; titulo: string; texto: string; created_at: string; mio: boolean; autor: string; respuestas: { texto: string; autor: string; fecha: string }[] }[];
+  llamadas: { id: string; visitante: string; motivo: string | null; foto_path: string | null; estado: string; created_at: string }[];
+  vehiculos: { id: string; placa: string; descripcion: string | null; activo: boolean }[];
+  pines: { id: string; pin: string; descripcion: string | null; expira: string; usado_at: string | null }[];
+};
+
+export async function comunidadVecino(token: string): Promise<DatosComunidad | null> {
+  if (!esToken(token)) return null;
+  const { data, error } = await createAdminClient().rpc("vecino_comunidad", { p_token: token });
+  return error || !data ? null : (data as DatosComunidad);
+}
