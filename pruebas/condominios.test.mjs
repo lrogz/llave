@@ -1,0 +1,392 @@
+// Pruebas del módulo de condominios contra una base Postgres con todas las migraciones.
+// Cómo correrlas: ver pruebas/README.md  →  DATABASE_URL=postgres://… npm run test:condominios
+import { after, before, describe, test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import pg from "pg";
+
+const URL = process.env.DATABASE_URL;
+if (!URL) throw new Error("Falta DATABASE_URL (base de prueba con las migraciones aplicadas).");
+const pool = new pg.Pool({ connectionString: URL, max: 6 });
+
+// Corre fn como un usuario de Supabase: 'service_role' (servidor) o 'authenticated' (miembro con sesión).
+async function como(rol, usuario, fn) {
+  const c = await pool.connect();
+  try {
+    await c.query("begin");
+    await c.query(`set local role ${rol}`);
+    const claims = usuario ? { sub: usuario.id, email: usuario.email, role: rol } : { role: rol };
+    await c.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(claims)]);
+    const r = await fn((sql, params) => c.query(sql, params));
+    await c.query("commit");
+    return r;
+  } catch (e) {
+    await c.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    c.release();
+  }
+}
+const servidor = (fn) => como("service_role", null, fn);
+const uno = async (q, sql, p) => (await q(sql, p)).rows[0];
+const sha = (s) => createHash("sha256").update(s).digest("hex");
+
+const yo = { id: randomUUID(), email: `admin-${Date.now()}@prueba.mx` };
+const staff = { id: randomUUID(), email: `staff-${Date.now()}@prueba.mx` };
+const otra = { id: randomUUID(), email: `otra-${Date.now()}@prueba.mx` };
+let orgA, orgB, condA, condA2, condB;
+
+async function abrirTurno(cond) {
+  return servidor(async (q) => {
+    const c = await uno(q, "select caseta_token from condominios where id = $1", [cond]);
+    const g = await uno(q, "select id from guardias where condominio_id = $1 order by created_at limit 1", [cond]);
+    const secreto = randomUUID();
+    const r = await uno(q, "select iniciar_turno($1, $2, '1234', $3) r", [c.caseta_token, g.id, sha(secreto)]);
+    assert.equal(r.r.ok, true, JSON.stringify(r.r));
+    return { turno: r.r.turno_id, hash: sha(secreto) };
+  });
+}
+async function residenteDe(cond, tipo = "propietario") {
+  return servidor((q) => uno(q, "select id, token, vivienda_id from residentes where condominio_id = $1 and tipo = $2 order by created_at limit 1", [cond, tipo]));
+}
+
+before(async () => {
+  const c = await pool.connect();
+  try {
+    for (const u of [yo, staff, otra]) await c.query("insert into auth.users (id, email) values ($1, $2)", [u.id, u.email]);
+  } finally {
+    c.release();
+  }
+  orgA = await como("authenticated", yo, async (q) => (await uno(q, "select crear_organizacion('Administradora A') id")).id);
+  orgB = await como("authenticated", otra, async (q) => (await uno(q, "select crear_organizacion('Administradora B') id")).id);
+  await servidor((q) => q("insert into miembros (organizacion_id, user_id, rol, email) values ($1, $2, 'staff', $3)", [orgA, staff.id, staff.email]));
+  const a = await como("authenticated", yo, (q) => uno(q, "select demo_condominios($1) r", [orgA]));
+  [condA, condA2] = a.r.condominios;
+  const b = await como("authenticated", otra, (q) => uno(q, "select demo_condominios($1) r", [orgB]));
+  [condB] = b.r.condominios;
+});
+after(() => pool.end());
+
+describe("Pases QR", () => {
+  async function pase(token, extra = {}) {
+    const d = { modalidad: "unico", desde: new Date(Date.now() - 60_000), hasta: new Date(Date.now() + 3600_000), ...extra };
+    return servidor((q) =>
+      uno(q, "select vecino_crear_pase($1, $2, 'visita', $3, $4, $5, $6, $7, $8, null) r", [token, "Visita prueba", d.modalidad, d.desde, d.hasta, d.dias ?? null, d.hora_desde ?? null, d.hora_hasta ?? null]),
+    ).then((x) => x.r);
+  }
+  const escanear = (t, codigo) => servidor((q) => uno(q, "select caseta_entrada($1, $2, $3) r", [t.turno, t.hash, codigo])).then((x) => x.r);
+
+  test("válido: entra y queda en la bitácora con guardia y quién autorizó", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token);
+    const r = await escanear(t, p.codigo);
+    assert.equal(r.ok, true);
+    const acc = await servidor((q) => uno(q, "select tipo, metodo, autorizo, guardia_id from accesos where id = $1", [r.acceso_id]));
+    assert.equal(acc.tipo, "entrada");
+    assert.equal(acc.metodo, "qr");
+    assert.match(acc.autorizo, /pase QR/);
+    assert.ok(acc.guardia_id);
+    // Salida: solo una vez
+    const s1 = await servidor((q) => uno(q, "select caseta_salida($1, $2, $3) r", [t.turno, t.hash, r.acceso_id]));
+    const s2 = await servidor((q) => uno(q, "select caseta_salida($1, $2, $3) r", [t.turno, t.hash, r.acceso_id]));
+    assert.equal(s1.r.ok, true);
+    assert.equal(s2.r.motivo, "ya_salio");
+  });
+
+  test("expirado y aún no vigente se rechazan", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token, { desde: new Date(Date.now() + 3600_000), hasta: new Date(Date.now() + 7200_000) });
+    assert.equal((await escanear(t, p.codigo)).motivo, "aun_no_vigente");
+    // Vencido: se crea vigente y se recorre la fecha en la base.
+    const p2 = await pase(res.token);
+    await servidor((q) => q("update pases set desde = now() - interval '2 hours', hasta = now() - interval '1 hour' where id = $1", [p2.id]));
+    assert.equal((await escanear(t, p2.codigo)).motivo, "vencido");
+  });
+
+  test("cancelado se rechaza", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token);
+    await servidor((q) => q("select vecino_cancelar_pase($1, $2)", [res.token, p.id]));
+    assert.equal((await escanear(t, p.codigo)).motivo, "cancelado");
+  });
+
+  test("doble escaneo simultáneo de un QR de un solo uso: solo una entrada", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token);
+    const resultados = await Promise.all(Array.from({ length: 5 }, () => escanear(t, p.codigo)));
+    assert.equal(resultados.filter((r) => r.ok).length, 1, JSON.stringify(resultados));
+    assert.ok(resultados.filter((r) => !r.ok).every((r) => r.motivo === "ya_usado"));
+    const n = await servidor((q) => uno(q, "select count(*)::int n from accesos where pase_id = $1", [p.id]));
+    assert.equal(n.n, 1);
+  });
+
+  test("un QR de otro condominio (misma administradora) no sirve en esta caseta", async () => {
+    const res = await residenteDe(condA2);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token);
+    assert.equal((await escanear(t, p.codigo)).motivo, "no_existe");
+  });
+
+  test("recurrente fuera de horario se rechaza", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token, { modalidad: "recurrente", hasta: new Date(Date.now() + 30 * 86400_000), dias: [1, 2, 3, 4, 5, 6, 7], hora_desde: "00:00", hora_hasta: "00:01" });
+    const hora = await servidor((q) => uno(q, "select (now() at time zone 'America/Mexico_City')::time > '00:01' tarde"));
+    if (hora.tarde) assert.equal((await escanear(t, p.codigo)).motivo, "fuera_de_horario");
+  });
+
+  test("un dispositivo sin el secreto del turno no puede escanear", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const p = await pase(res.token);
+    await assert.rejects(escanear({ turno: t.turno, hash: sha("otro") }, p.codigo), /turno_invalido/);
+  });
+});
+
+describe("Entrega de turno", () => {
+  test("lo pendiente del turno saliente aparece al turno entrante", async () => {
+    const res = await residenteDe(condA);
+    const t1 = await abrirTurno(condA);
+    await servidor((q) => q("select vecino_mensaje($1, 'Va a llegar un técnico de internet')", [res.token]));
+    const paquete = await servidor((q) => uno(q, "select caseta_paquete($1, $2, $3, 'DHL', 'Sobre') id", [t1.turno, t1.hash, res.vivienda_id]));
+    await servidor((q) => q("select caseta_manual($1, $2, $3, 'entrada', 'Plomero Juan', null, 'Llamada a la casa', 'manual', now(), $4)", [t1.turno, t1.hash, res.vivienda_id, randomUUID()]));
+    const e = await servidor((q) => uno(q, "select cerrar_turno($1, $2, 'Portón 2 se atora') e", [t1.turno, t1.hash]));
+    assert.ok(e.e.chats_pendientes.some((c) => c.vivienda_id === res.vivienda_id));
+    assert.ok(e.e.paquetes.some((k) => k.id === paquete.id));
+    assert.ok(e.e.dentro.some((d) => d.visitante === "Plomero Juan"));
+
+    const t2 = await abrirTurno(condA);
+    const d = await servidor((q) => uno(q, "select caseta_datos($1, $2) d", [t2.turno, t2.hash]));
+    assert.equal(d.d.entrega.turno_anterior.notas, "Portón 2 se atora");
+    assert.ok(d.d.entrega.chats_pendientes.some((c) => c.vivienda_id === res.vivienda_id));
+    assert.ok(d.d.entrega.paquetes.some((k) => k.id === paquete.id));
+    // El turno anterior ya no puede operar
+    await assert.rejects(servidor((q) => q("select caseta_datos($1, $2)", [t1.turno, t1.hash])), /turno_invalido/);
+  });
+
+  test("registro sin conexión reenviado no se duplica y queda para revisión", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    const ref = randomUUID();
+    for (let i = 0; i < 3; i++)
+      await servidor((q) => q("select caseta_manual($1, $2, $3, 'entrada', 'Sin señal', null, 'Interfón', 'sin_conexion', now() - interval '5 minutes', $4)", [t.turno, t.hash, res.vivienda_id, ref]));
+    const n = await servidor((q) => uno(q, "select count(*)::int n, min(revision) rev from accesos where ref_cliente = $1", [ref]));
+    assert.equal(n.n, 1);
+    assert.equal(n.rev, "pendiente");
+  });
+});
+
+describe("Reportes y quejas", () => {
+  test("queja privada: la ve la admin, no el staff ni el comité; el vecino la reabre con historial", async () => {
+    const res = await residenteDe(condA);
+    const t = await servidor((q) => uno(q, "select vecino_crear_reporte($1, 'otro', 'Ruido de vecino a las 3 am', 'Detalle privado', null, true) r", [res.token]));
+    const id = t.r.id;
+    const admin = await como("authenticated", yo, (q) => q("select id from tickets where id = $1", [id]));
+    const deStaff = await como("authenticated", staff, (q) => q("select id from tickets where id = $1", [id]));
+    assert.equal(admin.rowCount, 1);
+    assert.equal(deStaff.rowCount, 0);
+    const comite = await servidor(async (q) => {
+      const c = await uno(q, "select comite_token from condominios where id = $1", [condA]);
+      return uno(q, "select comite_datos($1, now()::date) d", [c.comite_token]);
+    });
+    assert.ok(!JSON.stringify(comite.d).includes("Ruido de vecino"));
+    assert.ok(comite.d.reportes.some((r) => r.titulo === "Queja privada"));
+
+    await como("authenticated", yo, (q) => q("update tickets set responsable = 'Comité de convivencia', fecha_compromiso = current_date + 3 where id = $1", [id]));
+    await como("authenticated", yo, (q) => q("update tickets set estado = 'resuelto', resuelto_at = now(), resolucion = 'Se habló con el vecino' where id = $1", [id]));
+    await servidor((q) => q("select vecino_reabrir($1, $2, 'Volvió a pasar anoche')", [res.token, id]));
+    const h = await servidor((q) => q("select a_estado, nota, actor from ticket_historial where ticket_id = $1 order by created_at", [id]));
+    const notas = h.rows.map((r) => r.nota ?? "").join(" | ");
+    assert.match(notas, /Responsable: Comité de convivencia/);
+    assert.match(notas, /Reabierto por el vecino/);
+    assert.equal(h.rows.at(-1).a_estado, "reportado");
+    // Otro residente no puede reabrir ni ver reportes ajenos
+    const otro = await servidor((q) => uno(q, "select token from residentes where condominio_id = $1 and id <> $2 limit 1", [condA, res.id]));
+    const vd = await servidor((q) => uno(q, "select vecino_datos($1) d", [otro.token]));
+    assert.ok(!vd.d.reportes.some((r) => r.id === id));
+  });
+});
+
+describe("Saldos y pagos", () => {
+  test("saldo con varios cargos, saldo inicial, ajuste y pagos (solo cuentan los confirmados)", async () => {
+    const v = await servidor((q) => uno(q, "insert into viviendas (organizacion_id, condominio_id, numero) values ($1, $2, 'Casa prueba 900') returning id", [orgA, condA]));
+    await como("authenticated", yo, async (q) => {
+      await q("insert into cargos_condominio (organizacion_id, condominio_id, vivienda_id, concepto, periodo, monto_centavos) values ($1,$2,$3,'mantenimiento','2026-10-01',120000), ($1,$2,$3,'mantenimiento','2026-11-01',120000), ($1,$2,$3,'agua','2026-11-01',25050)", [orgA, condA, v.id]);
+      await q("insert into ajustes_saldo (organizacion_id, condominio_id, vivienda_id, monto_centavos, tipo, motivo) values ($1,$2,$3,50000,'saldo_inicial','Adeudo anterior'), ($1,$2,$3,-10000,'ajuste','Bonificación por obra')", [orgA, condA, v.id]);
+      const p1 = await uno(q, "insert into pagos_condominio (organizacion_id, condominio_id, vivienda_id, monto_centavos, pagado_el, registrado_por) values ($1,$2,$3,120000,'2026-10-05','prueba') returning id", [orgA, condA, v.id]);
+      await q("insert into pagos_condominio (organizacion_id, condominio_id, vivienda_id, monto_centavos, pagado_el, registrado_por) values ($1,$2,$3,99999,'2026-11-05','prueba')", [orgA, condA, v.id]);
+      await q("select confirmar_pago_condominio($1)", [p1.id]);
+    });
+    const s = await como("authenticated", yo, (q) => uno(q, "select saldo_centavos::bigint s from saldos_vivienda where vivienda_id = $1", [v.id]));
+    // 120000 + 120000 + 25050 + 50000 − 10000 − 120000 (el pendiente no cuenta)
+    assert.equal(Number(s.s), 185050);
+  });
+
+  test("reintentar la confirmación de un pago no duplica recibo ni saldo", async () => {
+    const res = await residenteDe(condA);
+    const clave = randomUUID();
+    const p1 = await servidor((q) => uno(q, "select vecino_registrar_pago($1, 50000, 'SPEI 1', current_date, null, $2) r", [res.token, clave]));
+    const p2 = await servidor((q) => uno(q, "select vecino_registrar_pago($1, 50000, 'SPEI 1', current_date, null, $2) r", [res.token, clave]));
+    assert.equal(p1.r.id, p2.r.id);
+    assert.equal(p2.r.repetido, true);
+    const antes = await servidor((q) => uno(q, "select saldo_centavos::bigint s from saldos_vivienda where vivienda_id = $1", [res.vivienda_id]));
+    const [c1, c2] = await Promise.all([1, 2].map(() => como("authenticated", yo, (q) => uno(q, "select confirmar_pago_condominio($1) r", [p1.r.id]))));
+    assert.equal(c1.r.folio, c2.r.folio);
+    assert.equal([c1.r.repetido, c2.r.repetido].filter(Boolean).length, 1);
+    const despues = await servidor((q) => uno(q, "select saldo_centavos::bigint s from saldos_vivienda where vivienda_id = $1", [res.vivienda_id]));
+    assert.equal(Number(antes.s) - Number(despues.s), 50000);
+    const audit = await servidor((q) => uno(q, "select count(*)::int n from bitacora_condominio where entidad = 'pagos_condominio' and entidad_id = $1 and accion = 'update'", [p1.r.id]));
+    assert.equal(audit.n, 1);
+  });
+
+  test("cargar la cuota dos veces no duplica cargos", async () => {
+    const n1 = await como("authenticated", yo, (q) => uno(q, "select cargar_cuota($1, 'mantenimiento', '2027-01-01', 120000, '2027-01-10') n", [condA]));
+    const n2 = await como("authenticated", yo, (q) => uno(q, "select cargar_cuota($1, 'mantenimiento', '2027-01-15', 120000, '2027-01-10') n", [condA]));
+    assert.ok(n1.n > 0);
+    assert.equal(n2.n, 0);
+  });
+});
+
+describe("Permisos y aislamiento", () => {
+  test("inquilino sin permiso no ve el estado de cuenta ni registra pagos", async () => {
+    const inq = await residenteDe(condA, "inquilino");
+    const d = await servidor((q) => uno(q, "select vecino_datos($1) d", [inq.token]));
+    assert.equal(d.d.permisos.ver_cuenta, false);
+    assert.equal(d.d.cuenta, undefined);
+    await assert.rejects(servidor((q) => q("select vecino_registrar_pago($1, 100, null, current_date, null, $2)", [inq.token, randomUUID()])), /sin_permiso/);
+  });
+
+  test("el residente solo ve su vivienda y su condominio", async () => {
+    const res = await residenteDe(condA);
+    const d = await servidor((q) => uno(q, "select vecino_datos($1) d", [res.token]));
+    const ids = await servidor((q) => q("select id from pases where vivienda_id <> $1", [res.vivienda_id]));
+    const texto = JSON.stringify(d.d);
+    assert.ok(ids.rows.every((r) => !texto.includes(r.id)));
+    assert.ok(!texto.includes("Torres Alamar"));
+    assert.ok(!texto.includes("Administradora B"));
+  });
+
+  test("la caseta ve accesos y viviendas pero nada de dinero ni quejas, y solo de su condominio", async () => {
+    const t = await abrirTurno(condA);
+    const d = await servidor((q) => uno(q, "select caseta_datos($1, $2) d", [t.turno, t.hash]));
+    const texto = JSON.stringify(d.d);
+    assert.ok(!/saldo|monto|centavos|Ruido de vecino/i.test(texto));
+    const otroIds = new Set((await servidor((q) => q("select id from viviendas where condominio_id <> $1", [condA]))).rows.map((r) => r.id));
+    assert.ok(d.d.viviendas.every((v) => !otroIds.has(v.id)));
+    // Mandar un mensaje a una vivienda de otro condominio falla
+    const ajena = await servidor((q) => uno(q, "select id from viviendas where condominio_id = $1 limit 1", [condB]));
+    await assert.rejects(servidor((q) => q("select caseta_mensaje($1, $2, $3, 'hola')", [t.turno, t.hash, ajena.id])), /no pertenece/);
+  });
+
+  test("una administradora no ve ni toca los condominios de otra", async () => {
+    const vistos = await como("authenticated", otra, (q) => q("select id from condominios"));
+    assert.ok(!vistos.rows.some((r) => r.id === condA));
+    const saldos = await como("authenticated", otra, (q) => q("select vivienda_id from saldos_vivienda where condominio_id = $1", [condA]));
+    assert.equal(saldos.rowCount, 0);
+    await assert.rejects(como("authenticated", otra, (q) => q("select reporte_condominio($1, now()::date)", [condA])), /Sin permiso/);
+    await assert.rejects(como("authenticated", otra, (q) => q("insert into viviendas (organizacion_id, condominio_id, numero) values ($1, $2, 'X')", [orgB, condA])), /no pertenece|row-level/);
+  });
+
+  test("los links no se pueden usar desde el navegador (anon) ni con sesión", async () => {
+    const res = await residenteDe(condA);
+    await assert.rejects(como("anon", null, (q) => q("select vecino_datos($1)", [res.token])), /permission denied/);
+    await assert.rejects(como("authenticated", yo, (q) => q("select vecino_datos($1)", [res.token])), /permission denied/);
+    await assert.rejects(como("authenticated", yo, (q) => q("select * from guardias_pin")), /permission denied/);
+  });
+});
+
+describe("Alta de residentes y personal doméstico", () => {
+  test("alta con INE y selfie: al aprobar se crea el residente y se borran las fotos", async () => {
+    const c = await servidor((q) => uno(q, "select alta_token, organizacion_id from condominios where id = $1", [condA]));
+    const viv = await servidor((q) => uno(q, "select id from viviendas where condominio_id = $1 order by numero desc limit 1", [condA]));
+    const carpeta = `${c.organizacion_id}/condominios/${condA}/altas/`;
+    // Una vivienda de otro condominio no se acepta
+    const ajena = await servidor((q) => uno(q, "select id from viviendas where condominio_id = $1 limit 1", [condA2]));
+    await assert.rejects(servidor((q) => q("select alta_crear($1, $2, 'Nueva Vecina', '4420001111', null, 'propietario', $3, $4, $5, false)", [c.alta_token, ajena.id, carpeta + "a.jpg", carpeta + "b.jpg", carpeta + "c.jpg"])), /Elige tu vivienda/);
+    // Rutas fuera de la carpeta del condominio no se aceptan
+    await assert.rejects(servidor((q) => q("select alta_crear($1, $2, 'Nueva Vecina', '4420001111', null, 'propietario', 'otra/a.jpg', 'otra/b.jpg', null, true)", [c.alta_token, viv.id])), /INE/);
+    const s = await servidor((q) => uno(q, "select alta_crear($1, $2, 'Nueva Vecina', '4420001111', null, 'inquilino', $3, $4, $5, false) id", [c.alta_token, viv.id, carpeta + "a.jpg", carpeta + "b.jpg", carpeta + "c.jpg"]));
+    const d = await como("authenticated", yo, (q) => uno(q, "select decidir_alta($1, true, null) d", [s.id]));
+    assert.equal(d.d.borrar.length, 3);
+    assert.ok(d.d.token);
+    const fila = await servidor((q) => uno(q, "select estado, ine_frente_path, selfie_path, residente_id from solicitudes_alta where id = $1", [s.id]));
+    assert.equal(fila.estado, "aprobada");
+    assert.equal(fila.ine_frente_path, null);
+    assert.equal(fila.selfie_path, null);
+    const r = await servidor((q) => uno(q, "select tipo, vivienda_id from residentes where id = $1", [fila.residente_id]));
+    assert.equal(r.tipo, "inquilino");
+    await assert.rejects(como("authenticated", yo, (q) => q("select decidir_alta($1, true, null)", [s.id])), /ya se revisó/);
+  });
+
+  test("personal doméstico recurrente: caseta lo registra desde la lista y respeta el horario", async () => {
+    const res = await residenteDe(condA);
+    const p = await servidor((q) =>
+      uno(q, "select vecino_crear_pase($1, 'María López', 'servicio', 'recurrente', now() - interval '1 minute', now() + interval '90 days', array[1,2,3,4,5,6,7]::smallint[], '00:00', '23:59', null, 'Limpieza', 'lista') r", [res.token]),
+    );
+    const t = await abrirTurno(condA);
+    const d = await servidor((q) => uno(q, "select caseta_datos($1, $2) d", [t.turno, t.hash]));
+    assert.ok(d.d.autorizados_hoy.some((a) => a.id === p.r.id && a.servicio === "Limpieza"));
+    const e1 = await servidor((q) => uno(q, "select caseta_entrada_pase($1, $2, $3) r", [t.turno, t.hash, p.r.id]));
+    const e2 = await servidor((q) => uno(q, "select caseta_entrada_pase($1, $2, $3) r", [t.turno, t.hash, p.r.id]));
+    assert.equal(e1.r.ok, true);
+    assert.equal(e2.r.ok, true, "recurrente: puede entrar más de una vez dentro del horario");
+    // Un pase de otro condominio no se puede registrar desde esta caseta
+    const otro = await residenteDe(condA2);
+    const p2 = await servidor((q) => uno(q, "select vecino_crear_pase($1, 'Jardinero', 'servicio', 'recurrente', now(), now() + interval '9 days', null, null, null, null, 'Jardinería', 'lista') r", [otro.token]));
+    const e3 = await servidor((q) => uno(q, "select caseta_entrada_pase($1, $2, $3) r", [t.turno, t.hash, p2.r.id]));
+    assert.equal(e3.r.motivo, "no_existe");
+  });
+});
+
+describe("Amenidades y mudanzas", () => {
+  // Mañana a las 10:00 (CDMX), para no depender de la hora en que corre la prueba.
+  const manana = (h = 10) => {
+    const d = new Date(Date.now() + 86400_000).toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" });
+    return `${d}T${String(h).padStart(2, "0")}:00:00-06:00`;
+  };
+
+  test("gimnasio: el último lugar no se lo llevan dos; quien no alcanza queda en espera y sube al cancelarse otro", async () => {
+    const gym = await servidor((q) => uno(q, "select id from amenidades where condominio_id = $1 and tipo = 'gimnasio'", [condA]));
+    await servidor((q) => q("update amenidades set capacidad = 1 where id = $1", [gym.id]));
+    const vecinos = (await servidor((q) => q("select distinct on (vivienda_id) token from residentes where condominio_id = $1 and tipo = 'propietario' limit 3", [condA]))).rows;
+    const rs = await Promise.all(vecinos.map((v) => servidor((q) => uno(q, "select vecino_reservar($1, $2, $3, 60, 1) r", [v.token, gym.id, manana(7)]))));
+    assert.equal(rs.filter((x) => x.r.estado === "confirmada").length, 1);
+    assert.equal(rs.filter((x) => x.r.estado === "espera").length, 2);
+    const i = rs.findIndex((x) => x.r.estado === "confirmada");
+    await servidor((q) => q("select vecino_cancelar_reserva($1, $2)", [vecinos[i].token, rs[i].r.id]));
+    const ahora = await servidor((q) => q("select estado from reservas where id = any($1)", [rs.map((x) => x.r.id)]));
+    assert.equal(ahora.rows.filter((x) => x.estado === "confirmada").length, 1);
+  });
+
+  test("salón: al aprobar se cargan renta y depósito; al devolver el depósito el saldo baja", async () => {
+    const salon = await servidor((q) => uno(q, "select id from amenidades where condominio_id = $1 and tipo = 'salon'", [condA]));
+    const res = await residenteDe(condA);
+    const r = await servidor((q) => uno(q, "select vecino_reservar($1, $2, $3, 240, 40) r", [res.token, salon.id, manana(16)]));
+    assert.equal(r.r.estado, "solicitada");
+    // Nadie más puede apartar el mismo horario mientras está solicitada
+    const otro = await servidor((q) => uno(q, "select token from residentes where condominio_id = $1 and vivienda_id <> $2 limit 1", [condA, res.vivienda_id]));
+    await assert.rejects(servidor((q) => q("select vecino_reservar($1, $2, $3, 240, 10)", [otro.token, salon.id, manana(18)])), /ya está apartado/);
+    const saldo = async () => Number((await servidor((q) => uno(q, "select saldo_centavos s from saldos_vivienda where vivienda_id = $1", [res.vivienda_id]))).s);
+    const s0 = await saldo();
+    await como("authenticated", yo, (q) => q("select decidir_reserva($1, true, null)", [r.r.id]));
+    assert.equal((await saldo()) - s0, 350000);
+    await como("authenticated", yo, (q) => q("select cerrar_deposito($1, true, null)", [r.r.id]));
+    assert.equal((await saldo()) - s0, 250000);
+    await assert.rejects(como("authenticated", yo, (q) => q("select cerrar_deposito($1, true, null)", [r.r.id])), /ya se cerró/);
+  });
+
+  test("mudanza: al aprobar crea su pase y no se cruza con otra que usa el elevador", async () => {
+    const [a, b] = (await servidor((q) => q("select distinct on (vivienda_id) token from residentes where condominio_id = $1 limit 2", [condA2]))).rows;
+    const m1 = await servidor((q) => uno(q, "select vecino_solicitar_mudanza($1, 'entrada', $2, $3, 'Mudanzas del Centro', 'ABC-123', array['elevador','zona_carga']) id", [a.token, manana(9), manana(12)]));
+    const m2 = await servidor((q) => uno(q, "select vecino_solicitar_mudanza($1, 'salida', $2, $3, 'Fletes Rápidos', null, array['elevador']) id", [b.token, manana(11), manana(13)]));
+    await como("authenticated", yo, (q) => q("select decidir_mudanza($1, true, null)", [m1.id]));
+    await assert.rejects(como("authenticated", yo, (q) => q("select decidir_mudanza($1, true, null)", [m2.id])), /Choca/);
+    const p = await servidor((q) => uno(q, "select p.visitante, p.placa, p.modalidad from mudanzas m join pases p on p.id = m.pase_id where m.id = $1", [m1.id]));
+    assert.equal(p.visitante, "Mudanzas del Centro");
+    assert.equal(p.modalidad, "recurrente");
+  });
+});

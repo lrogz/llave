@@ -1,0 +1,25 @@
+# Pruebas del módulo de condominios
+
+Corren contra un PostgreSQL 15+ local con todas las migraciones. No tocan tu proyecto de Supabase.
+
+```bash
+# 1. Base de prueba (usa un Postgres local; crea la base "bk_pruebas")
+DATABASE_URL=postgres://postgres@localhost:5432/postgres ./pruebas/preparar-base.sh bk_pruebas
+
+# 2. Pruebas
+DATABASE_URL=postgres://postgres@localhost:5432/bk_pruebas npm run test:condominios
+```
+
+`supabase-shim.sql` imita lo mínimo de Supabase (roles anon/authenticated/service_role, `auth.uid()`, `auth.jwt()`, esquema `storage` y `pgcrypto` en `extensions`) para que las migraciones corran igual que en Supabase.
+
+## Qué se prueba (23 pruebas)
+
+| Tema | Casos |
+| --- | --- |
+| Pases QR | válido (entrada con guardia y quién autorizó, una sola salida), expirado, aún no vigente, cancelado, **5 escaneos simultáneos de un QR de un solo uso → 1 entrada**, QR de otro condominio de la misma administradora, recurrente fuera de horario, dispositivo sin el secreto del turno |
+| Entrega de turno | mensajes sin responder, paquetes y visitas dentro pasan al turno entrante; el turno anterior ya no puede operar; registro sin conexión reenviado 3 veces queda 1 vez y pendiente de revisión |
+| Quejas | queja privada visible para la admin, invisible para staff y comité; responsable y fecha en historial; el vecino la reabre; otro vecino no la ve |
+| Saldos y pagos | saldo con varios cargos + saldo inicial + ajuste a favor + pago confirmado (el pendiente no cuenta); **confirmación reintentada en paralelo → un solo folio y un solo descuento**; envío del residente repetido no duplica; cargar cuota dos veces no duplica |
+| Permisos y aislamiento | inquilino sin permiso no ve cuenta ni registra pagos; el residente solo ve su vivienda; la caseta no ve dinero ni quejas ni viviendas de otro condominio; otra administradora no ve ni escribe; los links no se pueden usar desde el navegador (anon) ni con sesión |
+| Altas | INE + selfie: vivienda de otro condominio y rutas ajenas rechazadas; al aprobar se crea el residente y se borran las fotos |
+| Amenidades y mudanzas | último lugar del gimnasio con 3 reservas simultáneas → 1 confirmada y 2 en espera, que sube al cancelar; salón: renta + depósito al estado de cuenta y devolución; mudanzas que chocan por elevador |

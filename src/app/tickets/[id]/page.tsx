@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
+import { SeguimientoVecino } from "@/components/SeguimientoVecino";
 import { Avance } from "@/components/Avance";
 import { Boton } from "@/components/Boton";
 import { InputComprimido } from "@/components/InputComprimido";
@@ -207,6 +208,7 @@ async function Contenido({ params, searchParams }: Props) {
 
         {ticket.estado !== "cancelado" && <Avance estado={ticket.estado} />}
         {ticket.estado !== "cancelado" && <Tiempos ticket={ticket} solicitudes={solicitudes} cotizaciones={cotizaciones} aprobaciones={aprobaciones} />}
+        <SeguimientoVecino supabase={supabase} ticketId={ticket.id} />
 
         <div className="flex flex-wrap items-start gap-5">
           {/* Evidencia */}

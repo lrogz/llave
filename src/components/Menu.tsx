@@ -3,11 +3,12 @@ import { salir } from "@/app/actions";
 import { Logo } from "./Logo";
 import { RegistrarSW } from "./RegistrarSW";
 
-type Seccion = "Hoy" | "Propiedades" | "Personas" | "Tickets" | "Pagos" | "Liquidaciones" | "Indicadores" | "Mantenimiento" | "Proveedores" | "Documentos" | "Equipo" | "Ajustes" | "Plan";
+type Seccion = "Hoy" | "Propiedades" | "Condominios" | "Personas" | "Tickets" | "Pagos" | "Liquidaciones" | "Indicadores" | "Mantenimiento" | "Proveedores" | "Documentos" | "Equipo" | "Ajustes" | "Plan";
 
 const ITEMS: { texto: Seccion | "Bandeja"; href: string | null; corto?: string }[] = [
   { texto: "Hoy", href: "/hoy" },
   { texto: "Propiedades", href: "/", corto: "Casas" },
+  { texto: "Condominios", href: "/condominios" },
   { texto: "Personas", href: "/personas" },
   { texto: "Tickets", href: "/tickets" },
   { texto: "Bandeja", href: null },

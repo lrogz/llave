@@ -35,6 +35,12 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
 | Avance del reporte | `/t/[token]` | Inquilino |
 | Cotizar o agendar visita | `/c/[token]` | Proveedor |
 | Aprobar cotización | `/a/[token]` | Dueño |
+| Condominios y su panel | `/condominios`, `/condominios/[id]` | Administradora |
+| Portal del residente | `/vecino/[token]` | Residente (sin cuenta) |
+| Caseta (escáner, chat, paquetes, turno) | `/caseta/[token]` | Guardia con PIN |
+| Reporte del comité | `/comite/[token]` | Comité |
+| Alta de residente con INE y selfie | `/alta/[token]` | Residente nuevo |
+| Pase de la visita | `/pase/[codigo]` | Visita |
 
 ## Qué hay en este repo
 
@@ -72,6 +78,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    20. `supabase/migrations/20261015100000_cobro_automatico.sql`
    21. `supabase/migrations/20261015110000_reparto_pagos.sql`
    22. `supabase/migrations/20261015120000_planes_por_nivel.sql`
+   23. `supabase/migrations/20261112120000_condominios.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -249,3 +256,54 @@ Stripe no ofrece domiciliación bancaria en México; el pago automático es con 
 - [x] WhatsApp automático (Cloud API de Meta): avisos con plantillas y reportes del inquilino por WhatsApp
 - [ ] Bandeja de WhatsApp: ver y contestar las conversaciones desde la app
 - [ ] Pagos y servicios: recordatorios de renta, comprobantes y semáforo de luz, agua, gas y predial
+
+### 11. Condominios y privadas
+
+Módulo para administrar privadas y condominios con lo que ya tiene Black Key: los reportes de vecinos son tickets (cotizaciones, proveedores, aprobación), los gastos usan tus proveedores y el condominio cuenta como **una propiedad** del plan (sus áreas comunes).
+
+**Poner en marcha**
+1. Corre la migración 23 (`20261112120000_condominios.sql`) en Supabase › SQL Editor. No necesita variables nuevas.
+2. En la app: **Condominios › Cargar condominios de ejemplo** (2 comunidades ficticias, guardias con PIN `1234`) o **Nuevo condominio**.
+3. En el condominio › *Viviendas y residentes*: crea viviendas o pega tu padrón desde Excel (vivienda, zona, nombre, celular, tipo, saldo inicial).
+4. *Caseta y links*: da de alta guardias con PIN, abre el **link de caseta** en el celular de caseta y agrégalo a la pantalla de inicio. Comparte el **link de alta** en el grupo de vecinos y el **link del comité** con el comité.
+5. A cada residente mándale su link personal por WhatsApp desde su vivienda.
+
+**Quién ve qué**
+
+| Rol | Entra con | Ve |
+| --- | --- | --- |
+| Administradora (propietaria/admin) | Su cuenta | Todo, incluidas quejas privadas |
+| Staff de la administradora | Su cuenta | Todo menos quejas privadas |
+| Propietario | Link personal | Su vivienda: pases, cuenta, recibos, reportes, chat, paquetes, amenidades, avisos de su zona |
+| Inquilino | Link personal | Igual, pero sin estado de cuenta ni pagos salvo que le des el permiso (configurable por persona) |
+| Guardia | Link de caseta + PIN | Escáner, bitácora, chat, paquetes, personal autorizado, mudanzas y eventos del día. Nada de dinero ni quejas |
+| Comité | Link del comité | Cobranza, gastos, adeudos por vivienda, reportes abiertos (las quejas privadas solo como número) y exportación CSV si lo permites |
+
+Toda la autorización de los links vive en funciones de la base (`vecino_*`, `caseta_*`, `comite_*`): resuelven el token, toman su condominio y vivienda, y nunca devuelven ni cambian nada fuera de ellos. Dos condominios de la misma administradora no se cruzan.
+
+**Cómo funciona por dentro**
+- **Pases QR:** código opaco de 12 caracteres, con vigencia, días y horario (recurrentes) y cancelación. La validación bloquea la fila del pase, así que un QR de un solo uso no autoriza dos entradas aunque se escanee al mismo tiempo en dos celulares.
+- **Caseta:** cada dispositivo guarda un secreto del turno (la base solo conoce su hash). Al iniciar un turno nuevo se cierra el anterior y sus pendientes (mensajes, paquetes, visitas dentro, esperados, notas) aparecen en *Turno*.
+- **Sin internet:** la caseta muestra el estado real. El QR no se puede validar sin conexión; el registro manual se guarda en el teléfono y se envía solo al volver la señal (sin duplicarse), marcado para revisión de la administración. Procedimiento de respaldo: bitácora de papel con hora, nombre, vivienda y quién autorizó.
+- **Dinero:** montos en centavos. Saldo = cargos + ajustes − pagos confirmados. Los saldos nunca se editan: se agregan ajustes con motivo. Confirmar un pago dos veces devuelve el mismo recibo (folio por condominio, serie configurable). Cargar la misma cuota dos veces no la duplica. Todo cambio queda en `bitacora_condominio` (sin tokens, PIN ni rutas de archivos).
+- **Amenidades:** por turnos (se confirman solas hasta llenar el cupo; si no hay lugar, lista de espera que sube sola al cancelar alguien) o con aprobación (salón). Al aprobar, la renta y el depósito se cargan al estado de cuenta; después del evento el depósito se devuelve (ajuste a favor) o se retiene con motivo.
+- **Mudanzas:** el vecino pide fecha, empresa, placa y recursos (zona de carga, elevador). Al aprobar se crea un pase QR para la mudanza y caseta la ve en su agenda; no se aprueban dos que usen el mismo recurso a la misma hora.
+- **Alta con INE y selfie:** el residente sube frente, reverso y selfie con su consentimiento; la administración las compara y aprueba. **Las imágenes se borran al decidir.** La comparación facial automática no está activa (ver pendientes).
+- **Archivos privados** en el bucket `llave` (`<organización>/condominios/<condominio>/…`), servidos con URLs firmadas de 1 hora.
+
+**Simulaciones y pendientes (no procesa dinero real)**
+- Pagos: solo se **registran** transferencias ya hechas a la cuenta del condominio. Conciliación SPEI automática y cobro en línea: siguiente etapa (se puede reutilizar el Stripe Connect de rentas).
+- Avisos al residente: aparecen en su portal y la caseta/administración los manda por WhatsApp con un toque (wa.me). Mandarlos solos requiere plantillas nuevas de WhatsApp (p. ej. `bk_paquete`, `bk_pase_aprobado`) y push para residentes.
+- Verificación facial automática: requiere un proveedor (Truora, MetaMap, Incode…), su contrato y aviso de privacidad para datos biométricos. Hoy la revisión es manual.
+- Apertura de pluma/portón y lectores de tags: requiere el controlador de acceso del condominio (relevador por IP o API del fabricante).
+- Después del piloto: invitaciones para fiestas con QR por invitado, cajones de visita, objetos y mascotas perdidas, contratistas, rentas temporales, incidentes y rondines, cuotas extraordinarias ligadas a obra, asambleas y cambio de administración, e integración opcional con Blooni.
+
+**Pruebas:** `pruebas/README.md` (23 pruebas contra Postgres: QR válido/vencido/cancelado/doble escaneo, entrega de turno, queja privada, saldos, reintento de pago, aislamiento por rol y por condominio, altas, amenidades y mudanzas).
+
+**Demo de punta a punta (5 minutos)**
+1. Condominios › Cargar condominios de ejemplo › entra a *Privada Los Encinos* › *Viviendas* › Casa 1 › copia el link de Ana Ruiz y ábrelo en el celular.
+2. Ana: **Crear pase QR** › Crear pase › Compartir por WhatsApp.
+3. En otro celular abre *Caseta y links* › link de caseta › Guardia matutino, PIN 1234 › escanea el QR (o escribe el código) → *Acceso autorizado*. Escanéalo otra vez → *Pase ya utilizado*.
+4. Administradora: *Accesos* › aparece la entrada con hora, guardia y quién autorizó.
+5. Ana: Cuenta › Registrar transferencia. Administradora: *Cuotas y pagos* › Confirmar y emitir recibo → el saldo de Ana baja y ve su recibo.
+6. Ana: Reportar › Nuevo reporte. Administradora: el ticket aparece en *Tickets*; pon responsable y resolución y **Cerrar como resuelto** → Ana ve el historial y puede reabrirlo.
