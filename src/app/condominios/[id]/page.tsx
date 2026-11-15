@@ -7,6 +7,7 @@ import { sesionConOrg } from "@/lib/sesion";
 import { esUuid, hoyCDMX } from "@/lib/condominios";
 import { origen } from "@/lib/util";
 import { Accesos, Amenidades, Avisos, Caseta, Comunidad, Cuotas, Reportes, Resumen, Seguridad, Viviendas, type Ctx } from "./secciones";
+import { Bitacora, EquiposObras, Incidencias, IndicadoresVista, Operacion } from "./secciones-piloto";
 
 export const metadata: Metadata = { title: "Condominio · Black Key" };
 
@@ -15,12 +16,17 @@ const VISTAS = [
   ["viviendas", "Viviendas y residentes"],
   ["cuotas", "Cuotas y pagos"],
   ["accesos", "Accesos"],
+  ["operacion", "Reglas y cajones"],
+  ["incidencias", "Incidencias"],
   ["seguridad", "Seguridad"],
   ["comunidad", "Comunidad"],
   ["amenidades", "Amenidades y mudanzas"],
   ["avisos", "Avisos"],
   ["caseta", "Caseta y links"],
   ["reportes", "Reporte del mes"],
+  ["indicadores", "Indicadores"],
+  ["obras", "Equipos y obras"],
+  ["bitacora", "Bitácora"],
 ] as const;
 
 type Busqueda = { vista?: string; mes?: string; [k: string]: string | undefined };
@@ -82,6 +88,11 @@ async function Contenido({ params, searchParams }: { params: Promise<{ id: strin
         {vista === "avisos" && <Avisos ctx={ctx} />}
         {vista === "caseta" && <Caseta ctx={ctx} />}
         {vista === "reportes" && <Reportes ctx={ctx} />}
+        {vista === "operacion" && <Operacion ctx={ctx} />}
+        {vista === "incidencias" && <Incidencias ctx={ctx} />}
+        {vista === "indicadores" && <IndicadoresVista ctx={ctx} />}
+        {vista === "obras" && <EquiposObras ctx={ctx} />}
+        {vista === "bitacora" && <Bitacora ctx={ctx} />}
       </main>
     </div>
   );

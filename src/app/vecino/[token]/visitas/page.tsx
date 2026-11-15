@@ -48,6 +48,7 @@ async function Contenido({ params }: { params: Promise<{ token: string }> }) {
           <BotonGrande href={`${base}/visitas/nuevo`} icono="qr">
             Crear pase QR
           </BotonGrande>
+          <BotonContorno href={`${base}/fiesta`}>Fiesta o reunión (un pase por invitado)</BotonContorno>
           <BotonContorno href={`${base}/visitas/nuevo?personal=1`}>Alta de personal doméstico</BotonContorno>
         </div>
       ) : (

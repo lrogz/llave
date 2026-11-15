@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { cancelarReserva } from "@/app/vecino/actions";
+import { cancelarReserva, responderOferta } from "@/app/vecino/actions";
 import { Boton } from "@/components/Boton";
 import { Icono } from "@/components/vecino/Iconos";
 import { Aviso, BotonContorno, Cargando, Chip, LinkInvalido, Pantalla, Tarjeta, Titulo, Vacio } from "@/components/vecino/Piezas";
-import { amenidadesVecino, datosVecino, dinero, urlsFirmadas, vigencia } from "@/lib/condominios";
+import { amenidadesVecino, cuando, datosVecino, dinero, urlsFirmadas, vigencia } from "@/lib/condominios";
 
 const ESTADO: Record<string, { texto: string; clase: string }> = {
   confirmada: { texto: "Confirmada", clase: "bg-[#D5E6CF] text-[#1E4D2B]" },
   solicitada: { texto: "Por aprobar", clase: "bg-[#F6D9A0] text-[#6B4A0B]" },
   espera: { texto: "Lista de espera", clase: "bg-[#F4E3C1] text-[#6B4A0B]" },
+  ofrecida: { texto: "¡Lugar libre!", clase: "bg-[#F6D9A0] text-[#6B4A0B]" },
   rechazada: { texto: "Rechazada", clase: "bg-[#FBE3D6] text-[#7A2E0A]" },
   cancelada: { texto: "Cancelada", clase: "bg-[#E7E3DA] text-[#5A5547]" },
 };
@@ -29,13 +30,13 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
   const [d, am] = await Promise.all([datosVecino(token), amenidadesVecino(token)]);
   if (!d || !am) return <LinkInvalido />;
   const fotos = await urlsFirmadas(am.amenidades.map((a) => a.foto_path));
-  const proximas = am.reservas.filter((r) => new Date(r.fin) > new Date() && ["confirmada", "solicitada", "espera"].includes(r.estado));
+  const proximas = am.reservas.filter((r) => new Date(r.fin) > new Date() && ["confirmada", "solicitada", "espera", "ofrecida"].includes(r.estado));
   return (
     <Pantalla>
       <Titulo titulo="Amenidades" sub={d.vivienda.numero} atras={`/vecino/${token}`} />
       {reserva === "confirmada" && <Aviso>¡Reservado! Te esperamos.</Aviso>}
       {reserva === "solicitada" && <Aviso>Enviamos tu solicitud. Te avisaremos cuando la administración la apruebe.</Aviso>}
-      {reserva === "espera" && <Aviso>Ese horario está lleno: quedaste en lista de espera. Si alguien cancela, se confirma sola.</Aviso>}
+      {reserva === "espera" && <Aviso>Ese horario está lleno: quedaste en lista de espera. Si alguien cancela, te avisamos para que confirmes.</Aviso>}
 
       {proximas.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -56,7 +57,23 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
                     </span>
                     <Chip texto={ESTADO[r.estado]?.texto ?? r.estado} clase={ESTADO[r.estado]?.clase ?? ""} />
                   </div>
-                  {r.deposito_estado !== "cargado" && (
+                  {r.estado === "ofrecida" ? (
+                    <div className="flex flex-col gap-2 rounded-xl bg-[#F6D9A0]/50 p-3">
+                      <p className="text-base font-semibold">Se liberó un lugar. Confírmalo antes de {r.oferta_expira ? cuando(r.oferta_expira) : "que venza"}.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["si", "no"] as const).map((v) => (
+                          <form key={v} action={responderOferta}>
+                            <input type="hidden" name="token" value={token} />
+                            <input type="hidden" name="reserva_id" value={r.id} />
+                            <input type="hidden" name="aceptar" value={v} />
+                            <Boton estilo={v === "si" ? "primario" : "claro"} enviando="…" className="min-h-12 w-full rounded-xl! text-base!">
+                              {v === "si" ? "Confirmar" : "Ya no"}
+                            </Boton>
+                          </form>
+                        ))}
+                      </div>
+                    </div>
+                  ) : r.deposito_estado !== "cargado" && (
                     <form action={cancelarReserva}>
                       <input type="hidden" name="token" value={token} />
                       <input type="hidden" name="reserva_id" value={r.id} />

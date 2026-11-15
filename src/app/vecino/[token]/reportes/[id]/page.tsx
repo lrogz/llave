@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { FormReabrir } from "@/components/vecino/FormReporte";
 import { Aviso, Cargando, Chip, Fila, LinkInvalido, Pantalla, Titulo } from "@/components/vecino/Piezas";
-import { ESTADO_REPORTE, cuando, datosVecino, urlsFirmadas } from "@/lib/condominios";
+import { ESTADO_REPORTE, cuando, datosVecino, urlsFirmadas, incidentesVecino } from "@/lib/condominios";
 
 const PASO: Record<string, string> = {
   reportado: "Recibido",
@@ -24,8 +24,9 @@ export default function Seguimiento({ params, searchParams }: { params: Promise<
 async function Contenido({ params, searchParams }: { params: Promise<{ token: string; id: string }>; searchParams: Promise<{ nuevo?: string }> }) {
   await connection();
   const [{ token, id }, { nuevo }] = await Promise.all([params, searchParams]);
-  const d = await datosVecino(token);
+  const [d, incidentes] = await Promise.all([datosVecino(token), incidentesVecino(token)]);
   const r = d?.reportes.find((x) => x.id === id);
+  const inc = incidentes?.[id];
   if (!d || !r) return <LinkInvalido />;
   const e = ESTADO_REPORTE[r.estado] ?? ESTADO_REPORTE.reportado;
   const fotos = await urlsFirmadas([r.foto]);
@@ -36,6 +37,12 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
       <Titulo titulo={r.titulo} sub={`Folio #${String(r.folio).padStart(4, "0")}`} atras={`/vecino/${token}/reportes`} />
       {nuevo && <Aviso>Recibimos tu reporte. Aquí verás cada avance.</Aviso>}
       <Chip texto={e.texto} clase={e.clase} />
+      {inc && (
+        <p className="rounded-xl border border-[#E1DCD0] bg-white px-4 py-3 text-lg">
+          Tu reporte forma parte de un problema general: <strong>{inc.titulo}</strong>
+          {inc.afectados > 1 ? ` (lo reportaron ${inc.afectados} viviendas)` : ""}. Conservas tu folio y aquí verás cada avance.
+        </p>
+      )}
       {foto && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={foto} alt="Foto del reporte" className="aspect-video w-full rounded-2xl object-cover" />

@@ -4,12 +4,13 @@ import { connection } from "next/server";
 import QRCode from "qrcode";
 import { Chip, Fila, Pantalla, Tarjeta } from "@/components/vecino/Piezas";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { estadoPase, esToken, vigencia } from "@/lib/condominios";
+import { contextoPase, estadoPase, esToken, vigencia } from "@/lib/condominios";
+import { DetallesAcceso } from "@/components/vecino/DetallesAcceso";
 import { origen } from "@/lib/util";
 
 export const metadata: Metadata = { title: "Tu pase de acceso", robots: { index: false, follow: false }, referrer: "same-origin" };
 
-// Lo que ve la visita al abrir el link que le mandaron: solo su QR, su nombre y la vigencia.
+// Lo que ve la visita al abrir el link que le mandaron: su QR, vigencia y cómo entrar (sin datos del residente).
 export default function PaseVisita({ params }: { params: Promise<{ codigo: string }> }) {
   return (
     <div className="flex min-h-full flex-1 flex-col bg-[#F7F4EE] text-[#1F1E1A]">
@@ -39,6 +40,7 @@ async function Contenido({ params }: { params: Promise<{ codigo: string }> }) {
   }
   const c = p.condominios as unknown as { nombre: string; direccion: string | null } | null;
   const e = estadoPase(p);
+  const ctx = await contextoPase(p.codigo);
   const qr = await QRCode.toString(`${await origen()}/pase/${p.codigo}`, { type: "svg", margin: 0, errorCorrectionLevel: "M" });
   return (
     <Pantalla>
@@ -58,6 +60,7 @@ async function Contenido({ params }: { params: Promise<{ codigo: string }> }) {
         <Fila icono="calendario">{vigencia(p.desde, p.hasta)}</Fila>
         {c?.direccion && <Fila icono="inicio">{c.direccion}</Fila>}
       </div>
+      {ctx && <DetallesAcceso ctx={ctx} />}
       <p className="text-center text-base text-[#5A5547]">Muestra este código en caseta. Sube el brillo de tu pantalla.</p>
     </Pantalla>
   );

@@ -150,6 +150,12 @@ export function FormReserva({ token, a, hoy }: { token: string; a: Amenidad; hoy
               <p className="px-4 pb-4 text-base whitespace-pre-line">{a.reglas}</p>
             </details>
           )}
+          {a.inventario && (
+            <details className="rounded-xl border border-[#BDB8AC] bg-[#FBF9F4]">
+              <summary className="flex min-h-13 cursor-pointer list-none items-center justify-center text-lg">Inventario que se revisa al entregar</summary>
+              <p className="px-4 pb-4 text-base whitespace-pre-line">{a.inventario}</p>
+            </details>
+          )}
           <p className="text-base text-[#5A5547]">La administración aprueba la solicitud. Al aprobarla, la renta y el depósito se suman a tu estado de cuenta; el depósito se devuelve después del evento si todo está en orden.</p>
         </div>
       )}

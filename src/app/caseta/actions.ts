@@ -61,6 +61,8 @@ async function despues(token: string, r: Resultado) {
 
 export async function escanear(token: string, codigo: string) {
   const texto = txt(codigo, 300);
+  // Folio corto (#123) cuando la cámara falla
+  if (/^#?\d{1,7}$/.test(texto)) return despues(token, await rpc(token, "caseta_entrada", { p_codigo: texto }));
   const limpio = texto.split("/").pop()!.split("?")[0].replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (limpio.length < 8) return { ok: false, motivo: "no_existe" } as Resultado;
   // QR de un punto de rondín
@@ -108,10 +110,19 @@ export async function entradaDeLista(token: string, paseId: string) {
   return despues(token, await rpc(token, "caseta_entrada_pase", { p_pase: paseId }));
 }
 
-export type RegistroManual = { ref: string; vivienda_id: string; tipo: "entrada" | "salida"; visitante: string; placa?: string; autorizo: string; metodo: "manual" | "sin_conexion"; ocurrio_at: string };
+export type RegistroManual = { ref: string; vivienda_id: string; tipo: "entrada" | "salida"; visitante: string; placa?: string; autorizo: string; metodo: "manual" | "sin_conexion"; ocurrio_at: string; llegada_at?: string };
 
 export async function registroManual(token: string, r: RegistroManual) {
   if (!esUuid(r.ref) || !esUuid(r.vivienda_id)) return { ok: false, error: "Datos incompletos." } as Resultado;
+  const res = await registrarManual(token, r);
+  // Cuánto tardó: desde que el guardia empezó a atender hasta que quedó registrado.
+  if (res.ok && typeof res.acceso_id === "string" && r.llegada_at && !Number.isNaN(Date.parse(r.llegada_at))) {
+    await rpc(token, "caseta_llegada", { p_acceso: res.acceso_id, p_llegada: r.llegada_at });
+  }
+  return res;
+}
+
+async function registrarManual(token: string, r: RegistroManual) {
   return despues(token, await rpc(token, "caseta_manual", {
     p_vivienda: r.vivienda_id,
     p_tipo: r.tipo === "salida" ? "salida" : "entrada",
@@ -141,9 +152,31 @@ export async function marcarAtendido(token: string, viviendaId: string) {
   return rpc(token, "caseta_atendido", { p_vivienda: viviendaId });
 }
 
-export async function recibirPaquete(token: string, viviendaId: string, paqueteria: string, descripcion: string) {
+// Sube una foto de paquetería al almacenamiento del condominio y devuelve su ruta.
+async function subirFotoPaquete(token: string, foto: FormDataEntryValue | null) {
+  if (!(foto instanceof File) || !foto.size) return null;
+  if (!foto.type.startsWith("image/") || foto.size > 3 * 1024 * 1024) throw new Error("Foto no válida.");
+  const admin = createAdminClient();
+  const { data: c } = await admin.from("condominios").select("id, organizacion_id").eq("caseta_token", token).maybeSingle();
+  if (!c) throw new Error("Link no válido.");
+  const ruta = `${c.organizacion_id}/condominios/${c.id}/paquetes/${randomUUID()}.jpg`;
+  if ((await admin.storage.from(BUCKET).upload(ruta, foto, { contentType: foto.type })).error) throw new Error("No se pudo subir la foto.");
+  return ruta;
+}
+
+export async function recibirPaquete(token: string, viviendaId: string, paqueteria: string, descripcion: string, f?: FormData) {
   if (!esUuid(viviendaId)) return { ok: false, error: "Elige la vivienda." } as Resultado;
   const r = await rpc(token, "caseta_paquete", { p_vivienda: viviendaId, p_paqueteria: txt(paqueteria, 60), p_descripcion: txt(descripcion, 200) });
+  if (r.ok && typeof r.data === "string" && f) {
+    let foto: string | null = null;
+    try {
+      foto = await subirFotoPaquete(token, f.get("foto"));
+    } catch {
+      /* el paquete ya quedó registrado; la foto es opcional */
+    }
+    const seg = Number(f.get("segundos"));
+    await rpc(token, "caseta_paquete_detalle", { p_paquete: r.data, p_foto: foto, p_ubicacion: txt(f.get("ubicacion"), 60) || null, p_segundos: Number.isFinite(seg) ? Math.round(seg) : null });
+  }
   if (r.ok) avisarVivienda(viviendaId, (t) => ({ titulo: "📦 Llegó tu paquete", cuerpo: `${txt(paqueteria, 60) || "Un paquete"} te espera en caseta.`, url: `/vecino/${t}/paquetes`, tag: `paq-${viviendaId}` }));
   return r;
 }
@@ -153,9 +186,41 @@ export async function paqueteAvisado(token: string, paqueteId: string) {
   return rpc(token, "caseta_paquete_avisado", { p_paquete: paqueteId });
 }
 
-export async function entregarPaquete(token: string, paqueteId: string, entregadoA: string) {
+export async function entregarPaquete(token: string, paqueteId: string, entregadoA: string, f?: FormData) {
   if (!esUuid(paqueteId)) return { ok: false } as Resultado;
-  return rpc(token, "caseta_entregar_paquete", { p_paquete: paqueteId, p_entregado_a: txt(entregadoA, 80) });
+  const r = await rpc(token, "caseta_entregar_paquete", { p_paquete: paqueteId, p_entregado_a: txt(entregadoA, 80) });
+  if (r.ok && f) await evidencia(token, [paqueteId], f);
+  return r;
+}
+
+async function evidencia(token: string, ids: string[], f: FormData) {
+  try {
+    const foto = await subirFotoPaquete(token, f.get("foto"));
+    if (foto) for (const id of ids) await rpc(token, "caseta_evidencia_entrega", { p_paquete: id, p_foto: foto });
+  } catch {
+    /* la entrega ya quedó registrada */
+  }
+}
+
+// Entrega a la persona que el residente autorizó (PIN de un solo uso).
+export async function entregarATercero(token: string, f: FormData) {
+  const pin = txt(f.get("pin"), 6);
+  if (!/^\d{6}$/.test(pin)) return { ok: false, motivo: "pin_invalido" } as Resultado;
+  const r = await rpc(token, "caseta_entregar_tercero", { p_pin: pin });
+  if (r.ok) {
+    if (Array.isArray(r.ids)) await evidencia(token, (r.ids as string[]).filter(esUuid), f);
+    if (typeof r.vivienda_id === "string")
+      avisarVivienda(r.vivienda_id, (t) => ({ titulo: "📦 Se entregó tu paquete", cuerpo: `Lo recogió ${String(r.nombre ?? "la persona que autorizaste")}.`, url: `/vecino/${t}/paquetes`, tag: `recogida-${pin}` }));
+  }
+  return r;
+}
+
+export async function registrarAclaracion(token: string, viviendaId: string, motivo: string) {
+  return rpc(token, "caseta_aclaracion", { p_vivienda: esUuid(viviendaId) ? viviendaId : null, p_motivo: txt(motivo, 200) || "Llamada para aclarar una visita" });
+}
+
+export async function confirmarRecepcion(token: string, notas: string) {
+  return rpc(token, "caseta_confirmar_recepcion", { p_notas: txt(notas, 1000) });
 }
 
 export async function cerrarTurno(f: FormData) {

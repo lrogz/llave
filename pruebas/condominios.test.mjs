@@ -62,6 +62,7 @@ before(async () => {
   await servidor((q) => q("insert into miembros (organizacion_id, user_id, rol, email) values ($1, $2, 'staff', $3)", [orgA, staff.id, staff.email]));
   const a = await como("authenticated", yo, (q) => uno(q, "select demo_condominios($1) r", [orgA]));
   await como("authenticated", yo, (q) => q("select demo_condominios_extra($1)", [orgA]));
+  await como("authenticated", yo, (q) => q("select demo_condominios_piloto($1)", [orgA]));
   [condA, condA2] = a.r.condominios;
   const b = await como("authenticated", otra, (q) => uno(q, "select demo_condominios($1) r", [orgB]));
   [condB] = b.r.condominios;
@@ -350,7 +351,7 @@ describe("Amenidades y mudanzas", () => {
     return `${d}T${String(h).padStart(2, "0")}:00:00-06:00`;
   };
 
-  test("gimnasio: el último lugar no se lo llevan dos; quien no alcanza queda en espera y sube al cancelarse otro", async () => {
+  test("gimnasio: el último lugar no se lo llevan dos; quien no alcanza queda en espera y se le ofrece al cancelarse otro", async () => {
     const gym = await servidor((q) => uno(q, "select id from amenidades where condominio_id = $1 and tipo = 'gimnasio'", [condA]));
     await servidor((q) => q("update amenidades set capacidad = 1 where id = $1", [gym.id]));
     const vecinos = (await servidor((q) => q("select distinct on (vivienda_id) token from residentes where condominio_id = $1 and tipo = 'propietario' limit 3", [condA]))).rows;
@@ -359,8 +360,14 @@ describe("Amenidades y mudanzas", () => {
     assert.equal(rs.filter((x) => x.r.estado === "espera").length, 2);
     const i = rs.findIndex((x) => x.r.estado === "confirmada");
     await servidor((q) => q("select vecino_cancelar_reserva($1, $2)", [vecinos[i].token, rs[i].r.id]));
-    const ahora = await servidor((q) => q("select estado from reservas where id = any($1)", [rs.map((x) => x.r.id)]));
-    assert.equal(ahora.rows.filter((x) => x.estado === "confirmada").length, 1);
+    const ahora = await servidor((q) => q("select id, estado from reservas where id = any($1)", [rs.map((x) => x.r.id)]));
+    const ofrecida = ahora.rows.find((x) => x.estado === "ofrecida");
+    assert.ok(ofrecida, "el primero en espera recibe la oferta");
+    assert.equal(ahora.rows.filter((x) => x.estado === "espera").length, 1);
+    // Acepta la oferta → confirmada
+    const quien = vecinos[rs.findIndex((x) => x.r.id === ofrecida.id)];
+    await servidor((q) => q("select vecino_responder_oferta($1, $2, true)", [quien.token, ofrecida.id]));
+    assert.equal((await servidor((q) => uno(q, "select estado from reservas where id = $1", [ofrecida.id]))).estado, "confirmada");
   });
 
   test("salón: al aprobar se cargan renta y depósito; al devolver el depósito el saldo baja", async () => {
@@ -548,5 +555,159 @@ describe("Conciliación bancaria", () => {
     const est = await servidor((q) => uno(q, "select estado from pagos_condominio where id = $1", [pendiente.r.id]));
     assert.equal(est.estado, "confirmado");
     await assert.rejects(como("authenticated", otra, (q) => q("select * from sugerencias_conciliacion($1)", [condA2])), /Sin permiso/);
+  });
+});
+
+describe("Piloto: pases con contexto, fiestas, cajones y reglas", () => {
+  test("el invitado abre su pase sin cuenta y solo ve sus datos de acceso; otra caseta no lo valida", async () => {
+    const p = await servidor((q) => uno(q, "select p.codigo, p.visitante from pases p join eventos e on e.id = p.evento_id where e.condominio_id = $1 limit 1", [condA]));
+    const pub = await servidor((q) => uno(q, "select pase_publico($1) d", [p.codigo]));
+    assert.equal(pub.d.visitante, p.visitante);
+    assert.ok(pub.d.instrucciones && pub.d.acceso);
+    const texto = JSON.stringify(pub.d);
+    assert.ok(!/residente|telefono|442 |token|vivienda_id/.test(texto), texto);
+    const t = await abrirTurno(condA2);
+    assert.equal((await servidor((q) => uno(q, "select caseta_entrada($1, $2, $3) r", [t.turno, t.hash, p.codigo]))).r.motivo, "no_existe");
+  });
+
+  test("fiesta: un pase por invitado, cajones para los primeros, revocar uno no afecta a los demás; reglas de máximo", async () => {
+    const res = await residenteDe(condA2);
+    const ini = new Date(Date.now() + 3 * 86400_000);
+    ini.setUTCHours(1, 0, 0, 0); // 19:00 en Querétaro
+    const fin = new Date(ini.getTime() + 4 * 3600_000);
+    const ev = await servidor((q) => uno(q, "select vecino_crear_evento($1, 'Posada', $2, $3, $4, 2, null) id", [res.token, ini, fin, ["Ana", "Beto", "Caro", "Dani"]]));
+    const pases = (await servidor((q) => q("select id, codigo, cajon_id, instrucciones from pases where evento_id = $1 order by created_at", [ev.id]))).rows;
+    assert.equal(pases.length, 4);
+    assert.equal(pases.filter((x) => x.cajon_id).length, 2);
+    assert.ok(pases[0].instrucciones, "toma las instrucciones de la regla");
+    await servidor((q) => q("select vecino_cancelar_pase($1, $2)", [res.token, pases[1].id]));
+    const est = (await servidor((q) => q("select estado from pases where evento_id = $1", [ev.id]))).rows.map((x) => x.estado);
+    assert.equal(est.filter((x) => x === "cancelado").length, 1);
+    await assert.rejects(servidor((q) => q("select vecino_crear_evento($1, 'Grande', $2, $3, $4, 0, null)", [res.token, ini, fin, Array.from({ length: 31 }, (_, i) => `Inv ${i}`)])), /máximo de invitados/);
+    await assert.rejects(servidor((q) => q("select vecino_crear_evento($1, 'Muchos autos', $2, $3, $4, 9, null)", [res.token, ini, fin, ["A", "Bb"]])), /cajones/);
+  });
+
+  test("cajones: no se asigna el mismo cajón dos veces al mismo horario; al salir se libera", async () => {
+    const res = await residenteDe(condA2);
+    const d = (h) => ({ visitante: `Auto ${h}`, tipo_visita: "visita", modalidad: "unico", desde: new Date(Date.now() - 60_000).toISOString(), hasta: new Date(Date.now() + 3 * 3600_000).toISOString(), cajon: true });
+    const libres = Number((await servidor((q) => uno(q, "select count(*) n from cajones k where k.condominio_id = $1 and not exists (select 1 from pases p where p.cajon_id = k.id and p.estado = 'activo' and p.hasta > now() and p.desde < now() + interval '3 hours')", [condA2]))).n);
+    const r = await Promise.allSettled(Array.from({ length: libres + 1 }, (_, i) => servidor((q) => uno(q, "select vecino_crear_pase_ctx($1, $2) r", [res.token, d(i)]))));
+    assert.equal(r.filter((x) => x.status === "fulfilled").length, libres);
+    assert.match(String(r.find((x) => x.status === "rejected").reason), /No hay cajones/);
+    const asignados = (await servidor((q) => q("select cajon_id from pases where visitante like 'Auto %' and condominio_id = $1", [condA2]))).rows.map((x) => x.cajon_id);
+    assert.equal(new Set(asignados).size, asignados.length);
+    // Entra y sale uno: su cajón vuelve a estar libre
+    const uno_ = (await servidor((q) => uno(q, "select codigo from pases where visitante = 'Auto 0' and condominio_id = $1", [condA2])));
+    const t = await abrirTurno(condA2);
+    const e = await servidor((q) => uno(q, "select caseta_entrada($1, $2, $3) r", [t.turno, t.hash, uno_.codigo]));
+    assert.ok(e.r.cajon);
+    await servidor((q) => q("select caseta_salida($1, $2, $3)", [t.turno, t.hash, e.r.acceso_id]));
+    const otro = await servidor((q) => uno(q, "select vecino_crear_pase_ctx($1, $2) r", [res.token, d(99)]));
+    assert.ok(otro.r.id);
+  });
+
+  test("reglas: servicio fuera de horario se rechaza; el pase de servicio muestra el trabajo autorizado; folio para buscar", async () => {
+    const res = await residenteDe(condA);
+    const noche = new Date(Date.now() + 86400_000);
+    noche.setUTCHours(4, 0, 0, 0); // 22:00 en Querétaro
+    await assert.rejects(
+      servidor((q) => q("select vecino_crear_pase_ctx($1, $2)", [res.token, { visitante: "Plomero", tipo_visita: "servicio", desde: noche.toISOString(), hasta: new Date(noche.getTime() + 3600_000).toISOString() }])),
+      /horario permitido/,
+    );
+    const p = (await servidor((q) => uno(q, "select codigo, folio from pases where trabajo like 'Instalación de módem%' and condominio_id = $1", [condA])));
+    const t = await abrirTurno(condA);
+    const r = await servidor((q) => uno(q, "select caseta_entrada($1, $2, $3) r", [t.turno, t.hash, `#${p.folio}`]));
+    assert.equal(r.r.ok, true);
+    assert.match(r.r.trabajo, /módem/);
+  });
+});
+
+describe("Piloto: paquetería y cambio de turno", () => {
+  test("doble confirmación del mismo paquete: solo una gana", async () => {
+    const res = await residenteDe(condA);
+    const t1 = await abrirTurno(condA);
+    const paq = await servidor((q) => uno(q, "select caseta_paquete($1, $2, $3, 'Estafeta', null) id", [t1.turno, t1.hash, res.vivienda_id]));
+    const r = await Promise.allSettled([1, 2].map(() => servidor((q) => q("select caseta_entregar_paquete($1, $2, $3, 'Ana Ruiz')", [t1.turno, t1.hash, paq.id]))));
+    assert.equal(r.filter((x) => x.status === "fulfilled").length, 1);
+    assert.match(String(r.find((x) => x.status === "rejected").reason), /ya se entregó/);
+  });
+
+  test("recogida por tercero: PIN de un solo uso, revocable, de su condominio", async () => {
+    const res = await residenteDe(condA);
+    const t = await abrirTurno(condA);
+    await servidor((q) => q("select caseta_paquete($1, $2, $3, 'Amazon', 'Sobre')", [t.turno, t.hash, res.vivienda_id]));
+    const a = await servidor((q) => uno(q, "select vecino_autorizar_recogida($1, null, 'Luis (vecino)', 24) r", [res.token]));
+    const pub = await servidor((q) => uno(q, "select recogida_publica($1) d", [a.r.token]));
+    assert.equal(pub.d.estado, "activa");
+    assert.ok(!JSON.stringify(pub.d).includes("Ana"), "no muestra al residente");
+    const t2 = await abrirTurno(condA2);
+    assert.equal((await servidor((q) => uno(q, "select caseta_entregar_tercero($1, $2, $3) r", [t2.turno, t2.hash, a.r.pin]))).r.ok, false);
+    const ok = await servidor((q) => uno(q, "select caseta_entregar_tercero($1, $2, $3) r", [t.turno, t.hash, a.r.pin]));
+    assert.equal(ok.r.ok, true);
+    assert.ok(ok.r.paquetes >= 1);
+    assert.equal((await servidor((q) => uno(q, "select caseta_entregar_tercero($1, $2, $3) r", [t.turno, t.hash, a.r.pin]))).r.ok, false);
+    const b = await servidor((q) => uno(q, "select vecino_autorizar_recogida($1, null, 'Otro', 24) r", [res.token]));
+    await servidor((q) => q("select vecino_revocar_recogida($1, $2)", [res.token, b.r.id]));
+    assert.equal((await servidor((q) => uno(q, "select caseta_entregar_tercero($1, $2, $3) r", [t.turno, t.hash, b.r.pin]))).r.motivo, "pin_invalido");
+  });
+
+  test("cambio de turno: incidencias abiertas en la entrega y el entrante confirma recepción", async () => {
+    const saliente = await abrirTurno(condA);
+    const res = await residenteDe(condA);
+    const paq = await servidor((q) => uno(q, "select caseta_paquete($1, $2, $3, 'DHL', 'Pendiente al cambio') id", [saliente.turno, saliente.hash, res.vivienda_id]));
+    await servidor((q) => q("select cerrar_turno($1, $2, 'Queda un paquete')", [saliente.turno, saliente.hash]));
+    const t = await abrirTurno(condA);
+    const d = await servidor((q) => uno(q, "select caseta_datos($1, $2) d", [t.turno, t.hash]));
+    assert.ok(Array.isArray(d.d.entrega.incidencias));
+    assert.ok(d.d.entrega.paquetes.some((k) => k.id === paq.id), "el paquete pendiente del turno anterior aparece");
+    await servidor((q) => q("select caseta_confirmar_recepcion($1, $2, 'Recibo con un paquete de DHL')", [t.turno, t.hash]));
+    const r = await servidor((q) => uno(q, "select recepcion_at, recepcion_notas from turnos where id = $1", [t.turno]));
+    assert.ok(r.recepcion_at);
+    await servidor((q) => q("select caseta_aclaracion($1, $2, null, 'Llamé a Casa 3 por una visita sin pase')", [t.turno, t.hash]));
+    const ind = await como("authenticated", yo, (q) => uno(q, "select indicadores_piloto($1, now() - interval '7 days', now() + interval '1 minute') r", [condA]));
+    assert.ok(ind.r.actual.aclaraciones >= 1);
+    assert.ok(ind.r.actual.cambios_turno_confirmados >= 1);
+    assert.ok("anterior" in ind.r);
+  });
+});
+
+describe("Piloto: incidentes agrupados", () => {
+  test("tres folios de falta de agua se vinculan a un incidente y reciben el aviso sin exponer datos entre viviendas", async () => {
+    const sug = (await como("authenticated", yo, (q) => q("select * from sugerencias_incidentes($1)", [condA]))).rows.filter((x) => x.titulo === "No hay agua");
+    assert.equal(sug.length, 3);
+    const inc = await como("authenticated", yo, (q) => uno(q, "select agrupar_reportes($1, $2, null, 'Falta de agua') id", [condA, sug.map((x) => x.ticket_id)]));
+    const viviendas = await como("authenticated", yo, (q) => uno(q, "select publicar_avance_incidente($1, 'Se cambió la válvula; regresa el agua a las 15:00', 'en_proceso', 'Mantenimiento', current_date) v", [inc.id]));
+    assert.equal(viviendas.v.length, 3);
+    const folios = (await servidor((q) => q("select folio from tickets where incidente_id = $1", [inc.id]))).rows;
+    assert.equal(new Set(folios.map((f) => f.folio)).size, 3, "cada reporte conserva su folio");
+    const t = await servidor((q) => uno(q, "select r.token, t.id from tickets t join residentes r on r.id = t.residente_id where t.incidente_id = $1 limit 1", [inc.id]));
+    const vd = await servidor((q) => uno(q, "select vecino_datos($1) d", [t.token]));
+    const rep = vd.d.reportes.find((x) => x.id === t.id);
+    assert.ok(rep.historial.some((h) => /Avance general/.test(h.nota ?? "")));
+    const vi = await servidor((q) => uno(q, "select vecino_incidentes($1) d", [t.token]));
+    assert.equal(vi.d[t.id].afectados, 3);
+    const otros = (await servidor((q) => q("select r.nombre from tickets x join residentes r on r.id = x.residente_id where x.incidente_id = $1 and x.id <> $2", [inc.id, t.id]))).rows;
+    const texto = JSON.stringify(vd.d) + JSON.stringify(vi.d);
+    assert.ok(otros.every((o) => !texto.includes(o.nombre)), "no aparecen nombres de otras viviendas");
+    // Deshacer la agrupación de uno
+    await como("authenticated", yo, (q) => q("select desagrupar_reporte($1)", [t.id]));
+    assert.equal((await servidor((q) => uno(q, "select incidente_id from tickets where id = $1", [t.id]))).incidente_id, null);
+  });
+});
+
+describe("Piloto: obras y equipos", () => {
+  test("la cuota de la obra se reparte y lo recaudado se calcula con los pagos aplicados a lo más antiguo", async () => {
+    const o = await servidor((q) => uno(q, "select id from obras where condominio_id = $1 limit 1", [condA2]));
+    const n = await como("authenticated", yo, (q) => uno(q, "select cargar_cuota_obra($1, 4000000, current_date, null, false) n", [o.id]));
+    assert.equal(n.n, 40);
+    const n2 = await como("authenticated", yo, (q) => uno(q, "select cargar_cuota_obra($1, 4000000, current_date, null, false) n", [o.id]));
+    assert.equal(n2.n, 0, "no se duplica");
+    const res = await residenteDe(condA2);
+    const antes = (await servidor((q) => uno(q, "select resumen_obras($1) r", [condA2]))).r.find((x) => x.id === o.id).recaudado_centavos;
+    const saldo = Number((await servidor((q) => uno(q, "select saldo_centavos s from saldos_vivienda where vivienda_id = $1", [res.vivienda_id]))).s);
+    const p = await servidor((q) => uno(q, "select vecino_registrar_pago($1, $2, 'SPEI obra', current_date, null, $3) r", [res.token, saldo, randomUUID()]));
+    await como("authenticated", yo, (q) => q("select confirmar_pago_condominio($1)", [p.r.id]));
+    const despues = (await servidor((q) => uno(q, "select resumen_obras($1) r", [condA2]))).r.find((x) => x.id === o.id).recaudado_centavos;
+    assert.equal(Number(despues) - Number(antes), 100000);
   });
 });

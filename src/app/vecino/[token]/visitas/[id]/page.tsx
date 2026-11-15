@@ -5,7 +5,8 @@ import { cancelarPase } from "@/app/vecino/actions";
 import { Boton } from "@/components/Boton";
 import { Icono } from "@/components/vecino/Iconos";
 import { Aviso, Cargando, Chip, Fila, LinkInvalido, Pantalla, Titulo } from "@/components/vecino/Piezas";
-import { DIAS, cuando, datosVecino, estadoPase, etiquetaDe, hora, vigencia } from "@/lib/condominios";
+import { DIAS, contextoPase, cuando, datosVecino, estadoPase, etiquetaDe, hora, vigencia } from "@/lib/condominios";
+import { DetallesAcceso } from "@/components/vecino/DetallesAcceso";
 import { linkWhatsApp, origen } from "@/lib/util";
 
 export default function DetallePase({ params, searchParams }: { params: Promise<{ token: string; id: string }>; searchParams: Promise<{ nuevo?: string }> }) {
@@ -24,13 +25,14 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
   const p = d.pases.find((x) => x.id === id);
   if (!p) return <LinkInvalido />;
   const e = estadoPase(p);
+  const ctx = await contextoPase(p.codigo);
   const url = `${await origen()}/pase/${p.codigo}`;
   const qr = await QRCode.toString(url, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#111111", light: "#FFFFFF" } });
   const dias = p.dias?.length ? p.dias.map((n) => etiquetaDe(DIAS, n)).join(", ") : "Todos los días";
   const mensaje =
     p.metodo_acceso === "lista"
       ? `Hola ${p.visitante}, ya estás autorizada(o) para entrar a ${d.condominio.nombre} (${d.vivienda.numero}): ${dias}, ${p.hora_desde?.slice(0, 5) ?? ""} a ${p.hora_hasta?.slice(0, 5) ?? ""}. En caseta da tu nombre.`
-      : `Hola ${p.visitante}, este es tu pase para entrar a ${d.condominio.nombre}. Muéstralo en caseta: ${url}`;
+      : `Hola ${p.visitante}, este es tu pase para entrar a ${d.condominio.nombre}${ctx?.acceso ? ` por ${ctx.acceso}` : ""}. Muéstralo en caseta: ${url}`;
 
   return (
     <Pantalla>
@@ -72,6 +74,7 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
           </>
         )}
       </div>
+      {ctx && <DetallesAcceso ctx={ctx} />}
       {e.vigente && (
         <div className="flex flex-col gap-3">
           <a href={linkWhatsApp(null, mensaje)} target="_blank" rel="noopener" className="flex min-h-16 items-center justify-center gap-3 rounded-2xl bg-[#17583A] px-5 text-xl font-semibold text-white">

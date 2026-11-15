@@ -83,6 +83,7 @@ Herramienta para quien administra propiedades en México (y para quien apenas em
    22. `supabase/migrations/20261015120000_planes_por_nivel.sql`
    23. `supabase/migrations/20261112120000_condominios.sql`
    24. `supabase/migrations/20261113090000_condominios_seguridad_comunidad.sql`
+   25. `supabase/migrations/20261115090000_condominios_piloto.sql`
 3. En **Authentication › URL Configuration** agrega `http://localhost:3000/auth/callback` (y luego tu dominio) en *Redirect URLs*.
 
 ### 2. App
@@ -266,7 +267,7 @@ Stripe no ofrece domiciliación bancaria en México; el pago automático es con 
 Módulo para administrar privadas y condominios con lo que ya tiene Black Key: los reportes de vecinos son tickets (cotizaciones, proveedores, aprobación), los gastos usan tus proveedores y el condominio cuenta como **una propiedad** del plan (sus áreas comunes).
 
 **Poner en marcha**
-1. Corre la migración 23 (`20261112120000_condominios.sql`) en Supabase › SQL Editor. No necesita variables nuevas.
+1. Corre las migraciones 23, 24 y 25 (en ese orden) en Supabase › SQL Editor. No necesitan variables nuevas.
 2. En la app: **Condominios › Cargar condominios de ejemplo** (2 comunidades ficticias, guardias con PIN `1234`) o **Nuevo condominio**.
 3. En el condominio › *Viviendas y residentes*: crea viviendas o pega tu padrón desde Excel (vivienda, zona, nombre, celular, tipo, saldo inicial).
 4. *Caseta y links*: da de alta guardias con PIN, abre el **link de caseta** en el celular de caseta y agrégalo a la pantalla de inicio. Comparte el **link de alta** en el grupo de vecinos y el **link del comité** con el comité.
@@ -290,7 +291,7 @@ Toda la autorización de los links vive en funciones de la base (`vecino_*`, `ca
 - **Caseta:** cada dispositivo guarda un secreto del turno (la base solo conoce su hash). Al iniciar un turno nuevo se cierra el anterior y sus pendientes (mensajes, paquetes, visitas dentro, esperados, notas) aparecen en *Turno*.
 - **Sin internet:** la caseta muestra el estado real. El QR no se puede validar sin conexión; el registro manual se guarda en el teléfono y se envía solo al volver la señal (sin duplicarse), marcado para revisión de la administración. Procedimiento de respaldo: bitácora de papel con hora, nombre, vivienda y quién autorizó.
 - **Dinero:** montos en centavos. Saldo = cargos + ajustes − pagos confirmados. Los saldos nunca se editan: se agregan ajustes con motivo. Confirmar un pago dos veces devuelve el mismo recibo (folio por condominio, serie configurable). Cargar la misma cuota dos veces no la duplica. Todo cambio queda en `bitacora_condominio` (sin tokens, PIN ni rutas de archivos).
-- **Amenidades:** por turnos (se confirman solas hasta llenar el cupo; si no hay lugar, lista de espera que sube sola al cancelar alguien) o con aprobación (salón). Al aprobar, la renta y el depósito se cargan al estado de cuenta; después del evento el depósito se devuelve (ajuste a favor) o se retiene con motivo.
+- **Amenidades:** por turnos (se confirman solas hasta llenar el cupo; si no hay lugar, lista de espera: al cancelar alguien se ofrece el lugar con plazo para confirmar) o con aprobación (salón). Al aprobar, la renta y el depósito se cargan al estado de cuenta; después del evento el depósito se devuelve (ajuste a favor) o se retiene con motivo.
 - **Mudanzas:** el vecino pide fecha, empresa, placa y recursos (zona de carga, elevador). Al aprobar se crea un pase QR para la mudanza y caseta la ve en su agenda; no se aprueban dos que usen el mismo recurso a la misma hora.
 - **Alta con INE y selfie:** el residente sube frente, reverso y selfie con su consentimiento; la administración las compara y aprueba. **Las imágenes se borran al decidir.** La comparación facial automática no está activa (ver pendientes).
 - **Archivos privados** en el bucket `llave` (`<organización>/condominios/<condominio>/…`), servidos con URLs firmadas de 1 hora.
@@ -309,15 +310,32 @@ Toda la autorización de los links vive en funciones de la base (`vecino_*`, `ca
 - **Documentos y tablero vecinal:** reglamento, actas y pólizas (visibles u ocultos); tablero de recomendaciones, ventas, preguntas y mascotas perdidas, con respuestas dentro de la app sin mostrar teléfonos. La administración puede ocultar publicaciones.
 - **Avisos al celular del residente:** con las mismas llaves VAPID de la sección 10, el residente toca *Activar* en su portal y recibe: tocan el timbre, llegó tu visita, llegó tu paquete, caseta te respondió, nueva votación y avisos urgentes. En iPhone debe agregar el portal a inicio primero.
 
+**Piloto: una app que coordina cada llegada (migración 25)**
+- **Pases con contexto:** al crear un pase el residente elige *Visita, Servicio, Fiesta o Mudanza*. Cada pase lleva acceso, indicaciones, cajón apartado y (en servicios) el trabajo autorizado. La visita lo ve en su link sin cuenta; caseta lo ve al validar.
+- **Reglas de acceso** (*Reglas y cajones*): por tipo de pase, acceso por omisión, horario permitido, duración máxima, invitados y cajones. Se aplican al crear el pase.
+- **Fiestas:** un pase de un solo uso por invitado (cada uno se comparte y se quita por separado), cajones para los primeros de la lista y contador de llegadas.
+- **Cajones de visita:** se asignan solos sin choques de horario y se liberan al registrar la salida.
+- **Folio corto:** cada pase tiene folio (#123). Si la cámara falla, caseta lo escribe o lo busca en *Llegadas de hoy*.
+- **Paquetería:** foto, ubicación (anaquel), tiempo de registro, foto de evidencia al entregar y **recogida por otra persona** con PIN de 6 dígitos o link de un solo uso, revocable. Si dos guardias confirman el mismo paquete, solo cuenta el primero.
+- **Cambio de turno:** el guardia entrante confirma que recibió el turno (con observaciones) y ve incidencias abiertas, cajones ocupados y paquetes pendientes con su ubicación.
+- **Aclaraciones:** botón en caseta para registrar cada llamada que hubo que hacer para aclarar una visita.
+- **Incidentes agrupados** (*Incidencias*): se sugieren reportes de la misma categoría y zona en 48 h; al agruparlos cada residente conserva su folio y recibe el avance general en su seguimiento y celular, sin ver quién más reportó.
+- **Indicadores del piloto** (*Indicadores* y link del comité): aclaraciones por 100 accesos, mediana llegada → validación, paquetes pendientes al cambio de turno, mediana para registrar paquete, reportes agrupados y tiempo al primer aviso; contra el periodo anterior y en CSV.
+- **Bitácora:** filtrable por tipo y por quién.
+- **Equipos con QR:** bomba, elevador, portón… El QR abre (para tu equipo) su historial de reportes, gastos, comprobantes y garantía. Liga tickets y gastos al equipo.
+- **Obras con cuota:** presupuesto aprobado (y asamblea), etapas, cuota extraordinaria por vivienda o indiviso, recaudado (pagos aplicados a lo más antiguo) y pagado al proveedor. Lo ven residentes y comité.
+- **Lista de espera con oferta:** si se libera un lugar, se ofrece al primero con un plazo (configurable por amenidad); si no confirma, pasa al siguiente. Inventario por amenidad que se revisa al cerrar el depósito.
+- **Demo "la prueba del sábado"** (se carga con los ejemplos): fiesta de 20 invitados y mudanza el mismo día, servicio con trabajo autorizado, paquete pendiente al cambio de turno, tres avisos de falta de agua para agrupar, cajones, reglas, equipos con historial y una obra.
+
 **Simulaciones y pendientes (no procesa dinero real)**
 - Pagos: solo se **registran** transferencias ya hechas a la cuenta del condominio. Conciliación SPEI automática y cobro en línea: siguiente etapa (se puede reutilizar el Stripe Connect de rentas).
 - Avisos al residente: aparecen en su portal y la caseta/administración los manda por WhatsApp con un toque (wa.me). Mandarlos solos requiere plantillas nuevas de WhatsApp (p. ej. `bk_paquete`, `bk_pase_aprobado`) y push para residentes.
 - Verificación facial automática: requiere un proveedor (Truora, MetaMap, Incode…), su contrato y aviso de privacidad para datos biométricos. Hoy la revisión es manual.
 - Pluma y cuarto de paquetes: el software ya llama al relevador; falta instalar el relevador en cada condominio. Lectores de tags RFID: siguiente etapa.
 - Videollamada en el timbre: hoy es aviso con nombre, motivo y foto; la llamada con video requeriría un servicio de WebRTC.
-- Después del piloto: invitaciones para fiestas con QR por invitado, cajones de visita, objetos y mascotas perdidas, contratistas, rentas temporales, incidentes y rondines, cuotas extraordinarias ligadas a obra, asambleas y cambio de administración, e integración opcional con Blooni.
+- Después del piloto: objetos y mascotas perdidas, contratistas, rentas temporales, cambio de administración e integración opcional con Blooni.
 
-**Pruebas:** `pruebas/README.md` (32 pruebas contra Postgres: QR válido/vencido/cancelado/doble escaneo, entrega de turno, queja privada, saldos, reintento de pago, aislamiento por rol y por condominio, altas, amenidades, mudanzas, vetados, placas, timbre, rondines, PIN de entrega, votaciones, tablero y conciliación).
+**Pruebas:** `pruebas/README.md` (41 pruebas contra Postgres, incluidas las de aceptación del piloto: QR válido/vencido/cancelado/doble escaneo, entrega de turno, queja privada, saldos, reintento de pago, aislamiento por rol y por condominio, altas, amenidades, mudanzas, vetados, placas, timbre, rondines, PIN de entrega, votaciones, tablero y conciliación).
 
 **Demo de punta a punta (5 minutos)**
 1. Condominios › Cargar condominios de ejemplo › entra a *Privada Los Encinos* › *Viviendas* › Casa 1 › copia el link de Ana Ruiz y ábrelo en el celular.

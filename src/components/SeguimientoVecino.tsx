@@ -8,10 +8,11 @@ import { cuando } from "@/lib/condominios-datos";
 export async function SeguimientoVecino({ supabase, ticketId }: { supabase: SupabaseClient; ticketId: string }) {
   const { data: t } = await supabase
     .from("tickets")
-    .select("id, condominio_id, ubicacion, sensible, responsable, fecha_compromiso, resolucion, reaperturas, estado, condominios(nombre), viviendas(numero), residentes(nombre, telefono)")
+    .select("id, condominio_id, equipo_id, incidente_id, ubicacion, sensible, responsable, fecha_compromiso, resolucion, reaperturas, estado, condominios(nombre), viviendas(numero), residentes(nombre, telefono)")
     .eq("id", ticketId)
     .maybeSingle();
   if (!t?.condominio_id) return null;
+  const { data: equipos } = await supabase.from("equipos_condominio").select("id, nombre").eq("condominio_id", t.condominio_id).eq("activo", true).order("nombre");
   const { data: h } = await supabase.from("ticket_historial").select("actor, de_estado, a_estado, nota, created_at").eq("ticket_id", ticketId).order("created_at");
   const nombre = (x: unknown, k: string) => (x as Record<string, string> | null)?.[k] ?? "";
   const abierto = !["resuelto", "cancelado"].includes(t.estado);
@@ -33,8 +34,29 @@ export async function SeguimientoVecino({ supabase, ticketId }: { supabase: Supa
         {nombre(t.viviendas, "numero") || "Sin vivienda"} · {nombre(t.residentes, "nombre")}
         {t.ubicacion ? ` · ${t.ubicacion}` : ""}. Lo que pongas aquí lo ve el vecino en su portal.
       </p>
+      {t.incidente_id && (
+        <p className="rounded-xl bg-fondo px-3 py-2 text-sm">
+          Agrupado en un incidente general.{" "}
+          <Link href={`/condominios/${t.condominio_id}?vista=incidencias`} className="underline">
+            Ver incidencias
+          </Link>
+        </p>
+      )}
       <form action={seguimientoReporte} className="grid gap-2 sm:grid-cols-2">
         <input type="hidden" name="ticket_id" value={t.id} />
+        {(equipos ?? []).length > 0 && (
+          <label className="flex flex-col gap-1 text-sm font-semibold sm:col-span-2">
+            Equipo (para su historial)
+            <select name="equipo_id" defaultValue={t.equipo_id ?? ""} className="min-h-11 rounded-xl border border-borde px-3">
+              <option value="">— Ninguno —</option>
+              {(equipos ?? []).map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm font-semibold">
           Responsable
           <input name="responsable" defaultValue={t.responsable ?? ""} placeholder="Mantenimiento, Jardinería, Comité…" className="min-h-11 rounded-xl border border-borde px-3" />

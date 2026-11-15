@@ -41,19 +41,24 @@ export async function crearPase(_: Estado, f: FormData): Promise<Estado> {
     if (!dias.length) return { error: "Elige al menos un día." };
   }
   if (!desde || !hasta) return { error: "Revisa la fecha y el horario." };
-  const { data, error } = await createAdminClient().rpc("vecino_crear_pase", {
+  const { data, error } = await createAdminClient().rpc("vecino_crear_pase_ctx", {
     p_token: token,
-    p_visitante: txt(f, "visitante", 120),
-    p_tipo_visita: txt(f, "tipo_visita", 20) || "visita",
-    p_modalidad: modalidad,
-    p_desde: desde,
-    p_hasta: hasta,
-    p_dias: dias,
-    p_hora_desde: horaDesde,
-    p_hora_hasta: horaHasta,
-    p_placa: txt(f, "placa", 12) || null,
-    p_servicio: txt(f, "servicio", 40) || null,
-    p_metodo: txt(f, "metodo") === "lista" ? "lista" : "qr",
+    p_datos: {
+      visitante: txt(f, "visitante", 120),
+      tipo_visita: txt(f, "tipo_visita", 20) || "visita",
+      modalidad,
+      desde,
+      hasta,
+      dias,
+      hora_desde: horaDesde,
+      hora_hasta: horaHasta,
+      placa: txt(f, "placa", 12) || null,
+      servicio: txt(f, "servicio", 40) || null,
+      metodo: txt(f, "metodo") === "lista" ? "lista" : "qr",
+      instrucciones: txt(f, "instrucciones", 500) || null,
+      trabajo: txt(f, "trabajo", 300) || null,
+      cajon: f.get("cajon") === "si",
+    },
   });
   if (error || !data) return { error: mensajeError(error, "No pudimos crear el pase.") };
   revalidatePath(`/vecino/${token}`, "layout");
@@ -174,8 +179,27 @@ export async function cancelarReserva(f: FormData) {
   const token = tokenDe(f);
   const id = txt(f, "reserva_id", 40);
   if (!esUuid(id)) return;
-  const { error } = await createAdminClient().rpc("vecino_cancelar_reserva", { p_token: token, p_reserva: id });
+  const { data, error } = await createAdminClient().rpc("vecino_cancelar_reserva", { p_token: token, p_reserva: id });
   if (error) throw new Error(mensajeError(error));
+  await avisarOfertas(data as string[] | null);
+  revalidatePath(`/vecino/${token}`, "layout");
+}
+
+// Avisa a quien recibió el lugar liberado de la lista de espera.
+async function avisarOfertas(ids: string[] | null) {
+  if (!ids?.length) return;
+  const { data } = await createAdminClient().from("reservas").select("vivienda_id").in("id", ids);
+  for (const r of (data ?? []) as { vivienda_id: string }[])
+    avisarVivienda(r.vivienda_id, (t) => ({ titulo: "Se liberó un lugar", cuerpo: "Confírmalo antes de que venza la oferta.", url: `/vecino/${t}/amenidades`, tag: "oferta" }));
+}
+
+export async function responderOferta(f: FormData) {
+  const token = tokenDe(f);
+  const id = txt(f, "reserva_id", 40);
+  if (!esUuid(id)) return;
+  const { data, error } = await createAdminClient().rpc("vecino_responder_oferta", { p_token: token, p_reserva: id, p_aceptar: f.get("aceptar") === "si" });
+  if (error) throw new Error(mensajeError(error));
+  await avisarOfertas(data as string[] | null);
   revalidatePath(`/vecino/${token}`, "layout");
 }
 
@@ -305,4 +329,77 @@ export async function crearPinEntrega(_: Estado, f: FormData): Promise<Estado> {
   if (error) return { error: mensajeError(error) };
   revalidatePath(`/vecino/${token}/accesos`);
   return { ok: (data as { pin: string }).pin };
+}
+
+// ─── Fiestas: un pase por invitado ───
+const listaInvitados = (f: FormData) =>
+  txt(f, "invitados", 20000)
+    .split(/[\n,]+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 2)
+    .slice(0, 500);
+
+export async function crearEvento(_: Estado, f: FormData): Promise<Estado> {
+  const token = tokenDe(f);
+  const fecha = txt(f, "fecha", 10);
+  const inicio = instante(fecha, txt(f, "hora_desde", 5));
+  let fin = instante(fecha, txt(f, "hora_hasta", 5));
+  if (!inicio || !fin) return { error: "Elige fecha y horario." };
+  if (fin <= inicio) fin = new Date(new Date(fin).getTime() + 86400_000).toISOString();
+  const invitados = listaInvitados(f);
+  if (!invitados.length) return { error: "Escribe al menos un invitado (uno por renglón)." };
+  const { data, error } = await createAdminClient().rpc("vecino_crear_evento", {
+    p_token: token,
+    p_nombre: txt(f, "nombre", 120) || "Reunión",
+    p_inicio: inicio,
+    p_fin: fin,
+    p_invitados: invitados,
+    p_cajones: Math.max(0, Number(txt(f, "cajones", 3)) || 0),
+    p_instrucciones: txt(f, "instrucciones", 500) || null,
+  });
+  if (error || !data) return { error: mensajeError(error, "No pudimos crear la fiesta.") };
+  revalidatePath(`/vecino/${token}`, "layout");
+  redirect(`/vecino/${token}/fiesta?evento=${String(data)}`);
+}
+
+export async function agregarInvitados(_: Estado, f: FormData): Promise<Estado> {
+  const token = tokenDe(f);
+  const evento = txt(f, "evento_id", 40);
+  if (!esUuid(evento)) return { error: "Fiesta no válida." };
+  const { error } = await createAdminClient().rpc("vecino_agregar_invitados", { p_token: token, p_evento: evento, p_invitados: listaInvitados(f) });
+  if (error) return { error: mensajeError(error) };
+  revalidatePath(`/vecino/${token}/fiesta`);
+  return { ok: "Invitados agregados." };
+}
+
+export async function cancelarEvento(f: FormData) {
+  const token = tokenDe(f);
+  const evento = txt(f, "evento_id", 40);
+  if (!esUuid(evento)) return;
+  const { error } = await createAdminClient().rpc("vecino_cancelar_evento", { p_token: token, p_evento: evento });
+  if (error) throw new Error(mensajeError(error));
+  revalidatePath(`/vecino/${token}`, "layout");
+}
+
+// ─── Paquetes: alguien más los recoge ───
+export async function autorizarRecogida(_: Estado, f: FormData): Promise<Estado> {
+  const token = tokenDe(f);
+  const paquete = txt(f, "paquete_id", 40);
+  const { data, error } = await createAdminClient().rpc("vecino_autorizar_recogida", {
+    p_token: token,
+    p_paquete: esUuid(paquete) ? paquete : null,
+    p_nombre: txt(f, "nombre", 120),
+    p_horas: Number(txt(f, "horas", 3)) || 24,
+  });
+  if (error) return { error: mensajeError(error) };
+  revalidatePath(`/vecino/${token}/paquetes`);
+  return { ok: (data as { pin: string }).pin };
+}
+
+export async function revocarRecogida(f: FormData) {
+  const token = tokenDe(f);
+  const id = txt(f, "autorizacion_id", 40);
+  if (!esUuid(id)) return;
+  await createAdminClient().rpc("vecino_revocar_recogida", { p_token: token, p_autorizacion: id });
+  revalidatePath(`/vecino/${token}/paquetes`);
 }

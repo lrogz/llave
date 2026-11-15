@@ -5,12 +5,15 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, useTra
 import {
   abrirPluma,
   cerrarTurno,
+  confirmarRecepcion,
   entradaDeLista,
+  entregarATercero,
   entregarPaquete,
   escanear,
   marcarAtendido,
   paqueteAvisado,
   recibirPaquete,
+  registrarAclaracion,
   registrarSalida,
   registroManual,
   responder,
@@ -36,10 +39,14 @@ export type DatosCaseta = {
   chats: { vivienda_id: string; vivienda: string; pendiente: boolean; ultimo_at: string; ultimo: string | null }[];
   autorizados_hoy: { id: string; visitante: string; servicio: string | null; tipo_visita: string; hora_desde: string | null; hora_hasta: string | null; metodo_acceso: string; vivienda: string }[];
   entrega: {
-    dentro: { id: string; visitante: string; placa: string | null; ocurrio_at: string; vivienda: string; metodo: string }[];
+    dentro: { id: string; visitante: string; placa: string | null; ocurrio_at: string; vivienda: string; metodo: string; cajon: string | null }[];
     chats_pendientes: { vivienda_id: string; vivienda: string; ultimo: string | null; ultimo_at: string }[];
-    paquetes: { id: string; vivienda: string; paqueteria: string | null; descripcion: string | null; recibido_at: string; avisado_at: string | null }[];
-    esperados: { visitante: string; tipo_visita: string; vivienda: string; desde: string; hasta: string; placa: string | null }[];
+    paquetes: { id: string; vivienda: string; paqueteria: string | null; descripcion: string | null; recibido_at: string; avisado_at: string | null; ubicacion: string | null }[];
+    esperados: {
+      id: string; folio: number | null; visitante: string; tipo_visita: string; vivienda: string; desde: string; hasta: string; placa: string | null;
+      acceso: string | null; trabajo: string | null; cajon: string | null; evento: string | null;
+    }[];
+    incidencias?: { tipo: string; titulo: string; estado: string; zona: string | null; created_at: string; reportes: number }[];
     manuales_pendientes: number;
     turno_anterior: { guardia: string; inicio: string; fin: string; notas: string | null } | null;
   };
@@ -51,6 +58,7 @@ export type ExtraCaseta = {
   tiene_pluma: boolean;
   vetados: { nombre: string | null; placa: string | null; motivo: string }[];
 };
+export type CajonesCaseta = { cajones: { nombre: string; ocupado_por: string | null; apartado_para: string | null }[]; recepcion_at: string | null };
 export type AgendaCaseta = {
   mudanzas: { tipo: string; vivienda: string; empresa: string; placa: string | null; inicio: string; fin: string; recursos: string[] }[];
   eventos: { amenidad: string; vivienda: string; inicio: string; fin: string; personas: number }[];
@@ -60,6 +68,7 @@ const horaFmt = new Intl.DateTimeFormat("es-MX", { hour: "numeric", minute: "2-d
 const hora = (iso: string) => horaFmt.format(new Date(iso));
 const TABS: { id: string; texto: string; icono: NombreIcono }[] = [
   { id: "escanear", texto: "Escanear", icono: "qr" },
+  { id: "llegadas", texto: "Llegadas", icono: "lista" },
   { id: "dentro", texto: "Dentro", icono: "persona" },
   { id: "chat", texto: "Chat", icono: "chat" },
   { id: "paquetes", texto: "Paquetes", icono: "paquete" },
@@ -132,7 +141,7 @@ function useEnLinea() {
   );
 }
 
-export function CasetaApp({ token, datos, agenda, extra }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta; extra: ExtraCaseta }) {
+export function CasetaApp({ token, datos, agenda, extra, cajones }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta; extra: ExtraCaseta; cajones: CajonesCaseta }) {
   const router = useRouter();
   const [tab, setTab] = useState("escanear");
   const enLinea = useEnLinea();
@@ -231,16 +240,17 @@ export function CasetaApp({ token, datos, agenda, extra }: { token: string; dato
 
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 px-4 py-5 pb-28">
         {tab === "escanear" && <PestanaEscanear token={token} datos={datos} extra={extra} enLinea={enLinea} revisar={revisar} cola={cola} guardarCola={guardar} />}
+        {tab === "llegadas" && <PestanaLlegadas token={token} datos={datos} enLinea={enLinea} revisar={revisar} />}
         {tab === "dentro" && <PestanaDentro token={token} datos={datos} revisar={revisar} />}
         {tab === "chat" && <PestanaChat token={token} datos={datos} revisar={revisar} />}
         {tab === "paquetes" && <PestanaPaquetes token={token} datos={datos} revisar={revisar} />}
-        {tab === "turno" && <PestanaTurno token={token} datos={datos} agenda={agenda} extra={extra} />}
+        {tab === "turno" && <PestanaTurno token={token} datos={datos} agenda={agenda} extra={extra} cajones={cajones} />}
       </main>
 
       <nav aria-label="Secciones de caseta" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0D1714] pb-[env(safe-area-inset-bottom)]">
-        <ul className="mx-auto grid max-w-xl grid-cols-5">
+        <ul className="mx-auto grid max-w-xl grid-cols-6">
           {TABS.map((t) => {
-            const n = t.id === "chat" ? pendientesChat : t.id === "paquetes" ? paquetes : t.id === "dentro" ? datos.entrega.dentro.length : 0;
+            const n = t.id === "chat" ? pendientesChat : t.id === "paquetes" ? paquetes : t.id === "dentro" ? datos.entrega.dentro.length : t.id === "llegadas" ? datos.entrega.esperados.length : 0;
             return (
               <li key={t.id}>
                 <button
@@ -318,6 +328,12 @@ function PestanaEscanear({
             {typeof r.vivienda === "string" && <dd>Va a: <b>{r.vivienda}</b></dd>}
             {typeof r.autorizo === "string" && r.autorizo && <dd>Autorizó: {r.autorizo}</dd>}
             {typeof r.placa === "string" && r.placa && <dd>Placas: {r.placa}</dd>}
+            {typeof r.folio === "number" && <dd>Folio #{r.folio}</dd>}
+            {typeof r.acceso === "string" && r.acceso && <dd>Acceso: <b>{r.acceso}</b></dd>}
+            {typeof r.cajon === "string" && r.cajon && <dd className="text-2xl">Cajón <b>{r.cajon}</b></dd>}
+            {Array.isArray(r.recursos) && r.recursos.length > 0 && <dd>Apartado: {(r.recursos as string[]).map((x) => (x === "elevador" ? "elevador de servicio" : "zona de carga")).join(" y ")}</dd>}
+            {typeof r.trabajo === "string" && r.trabajo && <dd className="rounded-xl bg-black/10 px-3 py-2">Trabajo autorizado: <b>{r.trabajo}</b></dd>}
+            {typeof r.instrucciones === "string" && r.instrucciones && <dd className="text-base">{r.instrucciones}</dd>}
           </dl>
         )}
         <p className="text-lg">{info.detalle || (r.error as string)}</p>
@@ -338,7 +354,7 @@ function PestanaEscanear({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (codigo.trim()) validar(codigo);
+              if (codigo.trim()) validar(codigo.trim());
               setCodigo("");
             }}
             className="flex gap-2"
@@ -346,7 +362,7 @@ function PestanaEscanear({
             <label htmlFor="codigo" className="sr-only">
               Código del pase
             </label>
-            <input id="codigo" value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="Código del pase" autoCapitalize="characters" autoComplete="off" className={`${CAMPO} font-mono tracking-widest`} />
+            <input id="codigo" value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="Código o folio (#123)" autoCapitalize="characters" autoComplete="off" className={`${CAMPO} font-mono tracking-widest`} />
             <button type="submit" disabled={ocupado || !enLinea} className={`${BOTON} shrink-0 bg-menta text-tinta`}>
               Validar
             </button>
@@ -356,6 +372,7 @@ function PestanaEscanear({
       <button type="button" onClick={() => setManual(!manual)} className={`${BOTON} border-2 border-white/20`}>
         {manual ? "Volver al escáner" : "Registro manual (sin QR o sin internet)"}
       </button>
+      {!manual && <FormAclaracion token={token} datos={datos} enLinea={enLinea} revisar={revisar} />}
       {manual && (
         <FormManual
           token={token}
@@ -467,6 +484,7 @@ function FormManual({
   const [leyendo, setLeyendo] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [llegada] = useState(() => new Date().toISOString()); // cuando el guardia empezó a atender
   const v = datos.viviendas.find((x) => x.numero.toLowerCase() === vivienda.trim().toLowerCase());
 
   return (
@@ -484,6 +502,7 @@ function FormManual({
           autorizo: String(f.get("autorizo") ?? ""),
           metodo: enLinea ? "manual" : "sin_conexion",
           ocurrio_at: new Date().toISOString(),
+          llegada_at: llegada,
         };
         setEnviando(true);
         let res: Resultado | undefined;
@@ -606,6 +625,7 @@ function PestanaDentro({ token, datos, revisar }: { token: string; datos: DatosC
                 <span className="block text-sm text-white/70">
                   {d.vivienda} · entró {hora(d.ocurrio_at)}
                   {d.placa ? ` · ${d.placa}` : ""}
+                  {d.cajon ? ` · cajón ${d.cajon}` : ""}
                 </span>
               </span>
               <button
@@ -769,6 +789,7 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
   const [recien, setRecien] = useState<{ vivienda: string; residentes: Residente[]; paqueteria: string } | null>(null);
   const [entregando, setEntregando] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [inicio, setInicio] = useState<number | null>(null); // para medir cuánto tarda registrar un paquete
   const porNumero = useMemo(() => new Map(datos.viviendas.map((v) => [v.numero, v])), [datos.viviendas]);
 
   return (
@@ -782,17 +803,32 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
           const v = datos.viviendas.find((x) => x.numero.toLowerCase() === vivienda.trim().toLowerCase());
           if (!v) return;
           setGuardando(true);
-          const r = revisar(await recibirPaquete(token, v.id, String(f.get("paqueteria") ?? ""), String(f.get("descripcion") ?? "")));
+          f.set("segundos", String(inicio ? Math.round((Date.now() - inicio) / 1000) : ""));
+          const foto = f.get("foto");
+          if (foto instanceof File && foto.size) f.set("foto", await comprimir(foto, 1280, 0.8));
+          const r = revisar(await recibirPaquete(token, v.id, String(f.get("paqueteria") ?? ""), String(f.get("descripcion") ?? ""), f));
           setGuardando(false);
           if (r.ok) {
             setRecien({ vivienda: v.numero, residentes: v.residentes ?? [], paqueteria: String(f.get("paqueteria") ?? "") });
             setVivienda("");
+            setInicio(null);
             formulario.reset();
           }
         }}
         className="flex flex-col gap-3 rounded-2xl bg-white/5 p-4"
       >
-        <input list="viviendas-paq" value={vivienda} onChange={(e) => setVivienda(e.target.value)} required placeholder="Vivienda" className={CAMPO} aria-label="Vivienda" />
+        <input
+          list="viviendas-paq"
+          value={vivienda}
+          onChange={(e) => {
+            if (inicio === null) setInicio(Date.now());
+            setVivienda(e.target.value);
+          }}
+          required
+          placeholder="Vivienda"
+          className={CAMPO}
+          aria-label="Vivienda"
+        />
         <datalist id="viviendas-paq">
           {datos.viviendas.map((x) => (
             <option key={x.id} value={x.numero} />
@@ -805,6 +841,16 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
           ))}
         </datalist>
         <input name="descripcion" placeholder="Descripción (caja chica, sobre…)" className={CAMPO} aria-label="Descripción" />
+        <input name="ubicacion" list="ubicaciones" placeholder="¿Dónde lo guardaste? (Anaquel A…)" className={CAMPO} aria-label="Ubicación" />
+        <datalist id="ubicaciones">
+          {["Anaquel A", "Anaquel B", "Refrigerador", "Bodega"].map((p) => (
+            <option key={p} value={p} />
+          ))}
+        </datalist>
+        <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/25 text-base has-[input:valid]:border-menta">
+          <Icono nombre="camara" className="size-5" /> Foto del paquete (opcional)
+          <input type="file" name="foto" accept="image/*" capture="environment" className="sr-only" />
+        </label>
         <button type="submit" disabled={guardando} className={`${BOTON} bg-menta text-tinta`}>
           {guardando ? "Guardando…" : "Registrar paquete"}
         </button>
@@ -829,6 +875,7 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
         </div>
       )}
       <FormPinEntrega token={token} revisar={revisar} />
+      <FormTercero token={token} revisar={revisar} />
       <h2 className="text-lg font-bold">En caseta ({datos.entrega.paquetes.length})</h2>
       <ul className="flex flex-col divide-y divide-white/10 rounded-2xl bg-white/5">
         {datos.entrega.paquetes.map((p) => (
@@ -838,6 +885,7 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
                 <span className="block text-lg font-semibold">{p.vivienda}</span>
                 <span className="block text-sm text-white/70">
                   {[p.paqueteria, p.descripcion].filter(Boolean).join(" · ") || "Paquete"} · {hora(p.recibido_at)}
+                  {p.ubicacion ? ` · ${p.ubicacion}` : ""}
                   {p.avisado_at ? " · avisado" : ""}
                 </span>
               </span>
@@ -851,11 +899,14 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  const n = String(new FormData(e.currentTarget).get("quien") ?? "");
-                  const r = revisar(await entregarPaquete(token, p.id, n));
+                  const f = new FormData(e.currentTarget);
+                  const foto = f.get("foto");
+                  if (foto instanceof File && foto.size) f.set("foto", await comprimir(foto, 1280, 0.8));
+                  const r = revisar(await entregarPaquete(token, p.id, String(f.get("quien") ?? ""), f));
                   if (r.ok) setEntregando(null);
+                  else if (r.error) alert(r.error);
                 }}
-                className="flex gap-2"
+                className="flex flex-wrap gap-2"
               >
                 <input name="quien" required minLength={2} list={`res-${p.id}`} placeholder="¿Quién lo recogió?" className={CAMPO} aria-label="Quién lo recogió" />
                 <datalist id={`res-${p.id}`}>
@@ -863,6 +914,10 @@ function PestanaPaquetes({ token, datos, revisar }: { token: string; datos: Dato
                     <option key={r.nombre} value={r.nombre} />
                   ))}
                 </datalist>
+                <label className="flex min-h-14 cursor-pointer items-center gap-2 rounded-xl border-2 border-dashed border-white/25 px-3 text-sm">
+                  <Icono nombre="camara" className="size-5" /> Evidencia
+                  <input type="file" name="foto" accept="image/*" capture="environment" className="sr-only" />
+                </label>
                 <button type="submit" className={`${BOTON} shrink-0 bg-menta text-tinta`}>
                   Entregar
                 </button>
@@ -892,8 +947,9 @@ function Bloque({ titulo, n, children }: { titulo: string; n: number; children: 
   );
 }
 
-function PestanaTurno({ token, datos, agenda, extra }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta; extra: ExtraCaseta }) {
+function PestanaTurno({ token, datos, agenda, extra, cajones }: { token: string; datos: DatosCaseta; agenda: AgendaCaseta; extra: ExtraCaseta; cajones: CajonesCaseta }) {
   const e = datos.entrega;
+  const incidencias = e.incidencias ?? [];
   return (
     <>
       <h1 className="font-display text-3xl font-bold">Entrega de turno</h1>
@@ -903,8 +959,28 @@ function PestanaTurno({ token, datos, agenda, extra }: { token: string; datos: D
             Turno anterior: {e.turno_anterior.guardia} · {hora(e.turno_anterior.inicio)}–{hora(e.turno_anterior.fin)}
           </p>
           <p className="mt-1 text-lg">{e.turno_anterior.notas || "Sin notas."}</p>
+          <FormRecepcion token={token} confirmada={cajones.recepcion_at} />
         </section>
       )}
+      <Bloque titulo="Incidencias abiertas" n={incidencias.length}>
+        {incidencias.map((x, i) => (
+          <li key={i}>
+            {x.tipo === "incidente" ? "⚠️ " : ""}
+            {x.titulo}
+            {x.zona ? ` · ${x.zona}` : ""}
+            {x.reportes > 1 ? ` · ${x.reportes} reportes` : ""} · {x.estado.replace("_", " ")}
+          </li>
+        ))}
+      </Bloque>
+      <Bloque titulo="Cajones de visitas" n={cajones.cajones.filter((c) => c.ocupado_por || c.apartado_para).length}>
+        {cajones.cajones
+          .filter((c) => c.ocupado_por || c.apartado_para)
+          .map((c) => (
+            <li key={c.nombre}>
+              <b>{c.nombre}</b> · {c.ocupado_por ? `ocupado: ${c.ocupado_por}` : `apartado: ${c.apartado_para}`}
+            </li>
+          ))}
+      </Bloque>
       <Bloque titulo="Visitas dentro" n={e.dentro.length}>
         {e.dentro.map((d) => (
           <li key={d.id}>
@@ -923,6 +999,7 @@ function PestanaTurno({ token, datos, agenda, extra }: { token: string; datos: D
         {e.paquetes.map((p) => (
           <li key={p.id}>
             {p.vivienda} · {p.paqueteria ?? "Paquete"}
+            {p.ubicacion ? ` · ${p.ubicacion}` : ""}
           </li>
         ))}
       </Bloque>
@@ -931,6 +1008,7 @@ function PestanaTurno({ token, datos, agenda, extra }: { token: string; datos: D
           <li key={i}>
             {x.visitante} · {x.vivienda} · {hora(x.desde)}–{hora(x.hasta)}
             {x.placa ? ` · ${x.placa}` : ""}
+            {x.cajon ? ` · cajón ${x.cajon}` : ""}
           </li>
         ))}
       </Bloque>
@@ -1063,6 +1141,176 @@ function FormPinEntrega({ token, revisar }: { token: string; revisar: (r: Result
       </div>
       <input name="paqueteria" placeholder="Paquetería (opcional)" className={CAMPO} aria-label="Paquetería" />
       {msg && <p className={`rounded-xl px-3 py-2 ${msg.ok ? "bg-menta/20 text-menta" : "bg-naranja"}`}>{msg.texto}</p>}
+    </form>
+  );
+}
+
+// ─── Llegadas de hoy: buscar por nombre, vivienda o folio cuando la cámara falla ───
+function PestanaLlegadas({ token, datos, enLinea, revisar }: { token: string; datos: DatosCaseta; enLinea: boolean; revisar: (r: Resultado) => Resultado }) {
+  const [busca, setBusca] = useState("");
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<Resultado | null>(null);
+  const q = busca.trim().toLowerCase().replace(/^#/, "");
+  const lista = datos.entrega.esperados.filter((x) => !q || `${x.visitante} ${x.vivienda} ${x.folio ?? ""} ${x.placa ?? ""} ${x.evento ?? ""}`.toLowerCase().includes(q));
+  const TIPO: Record<string, string> = { fiesta: "Fiesta", mudanza: "Mudanza", servicio: "Servicio", proveedor: "Proveedor", visita: "Visita", taxi: "Taxi", paqueteria: "Paquetería" };
+  return (
+    <>
+      <h1 className="font-display text-3xl font-bold">Llegadas de hoy</h1>
+      {resultado && (
+        <p role="status" className={`rounded-xl px-4 py-3 text-lg font-semibold ${resultado.ok ? "bg-menta text-tinta" : "bg-naranja"}`}>
+          {resultado.ok
+            ? `Entrada registrada: ${String(resultado.visitante ?? "")}${resultado.cajon ? ` · cajón ${String(resultado.cajon)}` : ""}`
+            : (RESULTADO_ESCANEO[String(resultado.motivo ?? "")]?.titulo ?? String(resultado.error ?? "No se pudo validar"))}
+        </p>
+      )}
+      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nombre, vivienda o folio" className={CAMPO} aria-label="Buscar llegada" />
+      <ul className="flex flex-col divide-y divide-white/10 rounded-2xl bg-white/5">
+        {lista.slice(0, 80).map((x) => (
+          <li key={x.id} className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="min-w-0">
+              <span className="block truncate text-lg font-semibold">{x.visitante}</span>
+              <span className="block text-sm text-white/70">
+                #{x.folio} · {TIPO[x.tipo_visita] ?? x.tipo_visita}
+                {x.evento ? ` (${x.evento})` : ""} · {x.vivienda} · {hora(x.desde)}–{hora(x.hasta)}
+                {x.cajon ? ` · cajón ${x.cajon}` : ""}
+                {x.acceso ? ` · ${x.acceso}` : ""}
+              </span>
+              {x.trabajo && <span className="block text-sm text-menta">Trabajo: {x.trabajo}</span>}
+            </span>
+            <button
+              type="button"
+              disabled={!enLinea || ocupado === x.id}
+              onClick={async () => {
+                setOcupado(x.id);
+                try {
+                  setResultado(revisar(await entradaDeLista(token, x.id)));
+                } finally {
+                  setOcupado(null);
+                }
+              }}
+              className="min-h-12 shrink-0 rounded-xl bg-menta px-4 font-bold text-tinta disabled:opacity-50"
+            >
+              {ocupado === x.id ? "…" : "Entrada"}
+            </button>
+          </li>
+        ))}
+        {!lista.length && <li className="p-6 text-center text-white/70">{busca ? "Sin coincidencias. Usa el registro manual." : "No hay llegadas esperadas."}</li>}
+      </ul>
+    </>
+  );
+}
+
+// Llamada para aclarar una visita (se mide para saber si los pases traen la información suficiente).
+function FormAclaracion({ token, datos, enLinea, revisar }: { token: string; datos: DatosCaseta; enLinea: boolean; revisar: (r: Resultado) => Resultado }) {
+  const [abierto, setAbierto] = useState(false);
+  const [listo, setListo] = useState(false);
+  if (!abierto)
+    return (
+      <button type="button" onClick={() => setAbierto(true)} className="text-left text-base text-white/80 underline">
+        {listo ? "✓ Aclaración registrada. ¿Otra?" : "Tuve que llamar para aclarar una visita"}
+      </button>
+    );
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        const v = datos.viviendas.find((x) => x.numero.toLowerCase() === String(f.get("vivienda") ?? "").trim().toLowerCase());
+        const r = revisar(await registrarAclaracion(token, v?.id ?? "", String(f.get("motivo") ?? "")));
+        if (r.ok) {
+          setAbierto(false);
+          setListo(true);
+        }
+      }}
+      className="flex flex-col gap-2 rounded-2xl bg-white/5 p-4"
+    >
+      <input name="vivienda" list="viviendas-caseta-acl" placeholder="Vivienda (opcional)" className={CAMPO} aria-label="Vivienda" />
+      <datalist id="viviendas-caseta-acl">
+        {datos.viviendas.map((x) => (
+          <option key={x.id} value={x.numero} />
+        ))}
+      </datalist>
+      <select name="motivo" className={CAMPO} aria-label="Motivo" defaultValue="Visita sin pase">
+        {["Visita sin pase", "El pase no decía por dónde entrar", "No sabía a qué venía (servicio)", "No había cajón", "Nombre o placa no coincidía", "Otro"].map((m) => (
+          <option key={m}>{m}</option>
+        ))}
+      </select>
+      <div className="flex gap-2">
+        <button type="submit" disabled={!enLinea} className={`${BOTON} flex-1 bg-menta text-tinta`}>
+          Registrar aclaración
+        </button>
+        <button type="button" onClick={() => setAbierto(false)} className={`${BOTON} border-2 border-white/20`}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// La persona que el residente autorizó recoge con su PIN.
+function FormTercero({ token, revisar }: { token: string; revisar: (r: Resultado) => Resultado }) {
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const formulario = e.currentTarget;
+        const f = new FormData(formulario);
+        const foto = f.get("foto");
+        if (foto instanceof File && foto.size) f.set("foto", await comprimir(foto, 1280, 0.8));
+        setEnviando(true);
+        try {
+          const r = revisar(await entregarATercero(token, f));
+          setMsg(
+            r.ok
+              ? { ok: true, texto: `Entrega a ${String(r.nombre)} (${String(r.vivienda)}): ${String(r.paquetes)} paquete(s). Pide identificación.` }
+              : { ok: false, texto: r.motivo === "bloqueado" ? "Demasiados intentos. Espera 10 minutos." : r.motivo === "sin_paquetes" ? "Esa vivienda no tiene paquetes en caseta." : "PIN no válido, usado o vencido." },
+          );
+          if (r.ok) formulario.reset();
+        } finally {
+          setEnviando(false);
+        }
+      }}
+      className="flex flex-col gap-2 rounded-2xl bg-white/5 p-4"
+    >
+      <h2 className="text-lg font-bold">Recoge otra persona (PIN del residente)</h2>
+      <div className="flex gap-2">
+        <input name="pin" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required placeholder="PIN de 6 dígitos" className={`${CAMPO} font-mono tracking-widest`} aria-label="PIN de recogida" />
+        <label className="flex min-h-14 shrink-0 cursor-pointer items-center gap-1 rounded-xl border-2 border-dashed border-white/25 px-3 text-sm">
+          <Icono nombre="camara" className="size-5" /> Foto
+          <input type="file" name="foto" accept="image/*" capture="environment" className="sr-only" />
+        </label>
+      </div>
+      <button type="submit" disabled={enviando} className={`${BOTON} bg-menta text-tinta`}>
+        {enviando ? "Validando…" : "Validar y entregar"}
+      </button>
+      {msg && (
+        <p role="status" className={`rounded-xl px-4 py-2 ${msg.ok ? "bg-menta text-tinta" : "bg-naranja"}`}>
+          {msg.texto}
+        </p>
+      )}
+    </form>
+  );
+}
+
+// El guardia que entra confirma que recibió el turno (con observaciones).
+function FormRecepcion({ token, confirmada }: { token: string; confirmada: string | null }) {
+  const [hecha, setHecha] = useState(confirmada);
+  if (hecha) return <p className="mt-3 rounded-xl bg-menta/15 px-3 py-2 text-base">✓ Recibiste el turno a las {hora(hecha)}.</p>;
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const r = await confirmarRecepcion(token, String(new FormData(e.currentTarget).get("notas") ?? ""));
+        if (r.ok) setHecha(new Date().toISOString());
+      }}
+      className="mt-3 flex flex-col gap-2"
+    >
+      <textarea name="notas" rows={2} maxLength={1000} placeholder="Observaciones al recibir (opcional)" className={`${CAMPO} py-3`} aria-label="Observaciones al recibir" />
+      <button type="submit" className={`${BOTON} bg-menta text-tinta`}>
+        Confirmo que recibí el turno
+      </button>
     </form>
   );
 }

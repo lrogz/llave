@@ -146,3 +146,13 @@ export function nombreDeMRZ(texto: string) {
   const nombre = `${limpia(nombres ?? "")} ${limpia(apellidos ?? "")}`.trim();
   return nombre.length >= 4 ? nombre : null;
 }
+
+// Periodo de indicadores: por omisión los últimos 7 días (hora de la Ciudad de México). Días inclusivos.
+export function rangoIndicadores(desde?: string | null, hasta?: string | null) {
+  const dia = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(d);
+  const hoy = dia(new Date());
+  const h = hasta && /^\d{4}-\d{2}-\d{2}$/.test(hasta) ? hasta : hoy;
+  const d = desde && /^\d{4}-\d{2}-\d{2}$/.test(desde) && desde <= h ? desde : dia(new Date(new Date(`${h}T12:00:00-06:00`).getTime() - 6 * 86400_000));
+  const fin = new Date(new Date(`${h}T00:00:00-06:00`).getTime() + 86400_000);
+  return { desde: `${d}T00:00:00-06:00`, hasta: fin.toISOString(), dia_desde: d, dia_hasta: h };
+}

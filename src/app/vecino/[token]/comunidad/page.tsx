@@ -4,7 +4,8 @@ import { borrarPublicacion, responderPublicacion, votar } from "@/app/vecino/act
 import { Boton } from "@/components/Boton";
 import { FormPublicar } from "@/components/vecino/FormsComunidad";
 import { CAMPO, Cargando, Chip, LinkInvalido, Pantalla, Tarjeta, Titulo, Vacio } from "@/components/vecino/Piezas";
-import { CATEGORIAS_DOCUMENTO, TIPOS_TABLERO, comunidadVecino, cuando, datosVecino, etiquetaDe } from "@/lib/condominios";
+import { CATEGORIAS_DOCUMENTO, TIPOS_TABLERO, comunidadVecino, cuando, datosVecino, etiquetaDe, obrasVecino } from "@/lib/condominios";
+import { ResumenObras } from "@/components/ResumenObras";
 
 export default function Comunidad({ params }: { params: Promise<{ token: string }> }) {
   return (
@@ -19,12 +20,19 @@ const H2 = "text-2xl font-bold";
 async function Contenido({ params }: { params: Promise<{ token: string }> }) {
   await connection();
   const { token } = await params;
-  const [d, c] = await Promise.all([datosVecino(token), comunidadVecino(token)]);
+  const [d, c, obras] = await Promise.all([datosVecino(token), comunidadVecino(token), obrasVecino(token)]);
   if (!d || !c) return <LinkInvalido />;
   const proxima = c.asambleas.find((a) => a.estado === "convocada" && new Date(a.fecha) > new Date());
   return (
     <Pantalla>
       <Titulo titulo="Comunidad" sub={d.condominio.nombre} atras={`/vecino/${token}`} />
+
+      {obras && obras.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className={H2}>Obras</h2>
+          <ResumenObras obras={obras} />
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className={H2}>Votaciones</h2>

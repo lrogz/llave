@@ -21,7 +21,7 @@ function Segmento({ opciones, valor, onCambio, nombre }: { opciones: [string, st
 }
 
 // Crear pase de visita (un uso o recurrente) o dar de alta a personal doméstico.
-export function FormPase({ token, hoy, personal }: { token: string; hoy: string; personal: boolean }) {
+export function FormPase({ token, hoy, personal, servicio = false }: { token: string; hoy: string; personal: boolean; servicio?: boolean }) {
   const [estado, accion, pendiente] = useActionState(crearPase, null);
   const [modalidad, setModalidad] = useState(personal ? "recurrente" : "unico");
   const finDeAno = `${hoy.slice(0, 4)}-12-31`;
@@ -29,13 +29,19 @@ export function FormPase({ token, hoy, personal }: { token: string; hoy: string;
   return (
     <form action={accion} className="flex flex-col gap-5">
       <input type="hidden" name="token" value={token} />
-      {personal && <input type="hidden" name="tipo_visita" value="servicio" />}
+      {(personal || servicio) && <input type="hidden" name="tipo_visita" value="servicio" />}
       {personal && <input type="hidden" name="modalidad" value="recurrente" />}
 
       <label className={ETIQUETA}>
-        {personal ? "Nombre completo" : "¿Quién viene?"}
-        <input name="visitante" required minLength={2} maxLength={120} autoComplete="off" placeholder={personal ? "María López" : "Ana"} className={CAMPO} />
+        {personal ? "Nombre completo" : servicio ? "Persona o empresa" : "¿Quién viene?"}
+        <input name="visitante" required minLength={2} maxLength={120} autoComplete="off" placeholder={personal ? "María López" : servicio ? "Plomería Ruiz" : "Ana"} className={CAMPO} />
       </label>
+      {servicio && (
+        <label className={ETIQUETA}>
+          Trabajo autorizado
+          <textarea name="trabajo" required minLength={3} maxLength={300} rows={2} placeholder="Revisar fuga en baño de visitas. Trae herramienta y refacciones." className={`${CAMPO} py-3`} />
+        </label>
+      )}
 
       {personal ? (
         <label className={ETIQUETA}>
@@ -46,7 +52,7 @@ export function FormPase({ token, hoy, personal }: { token: string; hoy: string;
             ))}
           </select>
         </label>
-      ) : (
+      ) : servicio ? null : (
         <>
           <label className={ETIQUETA}>
             Tipo de visita
@@ -109,10 +115,20 @@ export function FormPase({ token, hoy, personal }: { token: string; hoy: string;
           </select>
         </label>
       ) : (
-        <label className={ETIQUETA}>
-          Placas (opcional)
-          <input name="placa" maxLength={12} autoCapitalize="characters" placeholder="UAB-123-C" className={CAMPO} />
-        </label>
+        <>
+          <label className={ETIQUETA}>
+            Placas (opcional)
+            <input name="placa" maxLength={12} autoCapitalize="characters" placeholder="UAB-123-C" className={CAMPO} />
+          </label>
+          <label className="flex min-h-13 cursor-pointer items-center gap-3 rounded-xl border border-[#BDB8AC] bg-[#FBF9F4] px-4 text-lg has-checked:border-transparent has-checked:bg-[#D5E6CF] has-checked:text-[#1E4D2B]">
+            <input type="checkbox" name="cajon" value="si" className="size-5 accent-[#17583A]" />
+            Apartar cajón de visitas
+          </label>
+          <label className={ETIQUETA}>
+            Indicaciones para tu visita (opcional)
+            <textarea name="instrucciones" maxLength={500} rows={2} placeholder="Toca en la puerta de atrás." className={`${CAMPO} py-3`} />
+          </label>
+        </>
       )}
 
       {estado?.error && <Aviso tipo="error">{estado.error}</Aviso>}

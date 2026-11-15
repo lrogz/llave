@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { CasetaApp, type AgendaCaseta, type DatosCaseta, type ExtraCaseta } from "@/components/caseta/CasetaApp";
+import { CasetaApp, type AgendaCaseta, type CajonesCaseta, type DatosCaseta, type ExtraCaseta } from "@/components/caseta/CasetaApp";
 import { FormTurno } from "@/components/caseta/FormTurno";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esToken, sesionCaseta } from "@/lib/condominios";
@@ -28,10 +28,11 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
 
   const sesion = await sesionCaseta(token);
   if (sesion) {
-    const [d, a, x] = await Promise.all([
+    const [d, a, x, k] = await Promise.all([
       admin.rpc("caseta_datos", { p_turno: sesion.turno, p_hash: sesion.hash }),
       admin.rpc("agenda_caseta", { p_turno: sesion.turno, p_hash: sesion.hash }),
       admin.rpc("caseta_extra", { p_turno: sesion.turno, p_hash: sesion.hash }),
+      admin.rpc("caseta_cajones", { p_turno: sesion.turno, p_hash: sesion.hash }),
     ]);
     if (!d.error && d.data)
       return (
@@ -40,6 +41,7 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
           datos={d.data as DatosCaseta}
           agenda={(a.data as AgendaCaseta) ?? { mudanzas: [], eventos: [] }}
           extra={(x.data as ExtraCaseta) ?? { alertas: [], timbre: [], rondin: [], tiene_pluma: false, vetados: [] }}
+          cajones={(k.data as CajonesCaseta) ?? { cajones: [], recepcion_at: null }}
         />
       );
   }

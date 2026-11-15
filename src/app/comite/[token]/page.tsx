@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { IndicadoresPiloto } from "@/components/IndicadoresPiloto";
+import { ResumenObras } from "@/components/ResumenObras";
+import type { Indicadores } from "@/lib/csv";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { Logo } from "@/components/Logo";
@@ -34,6 +37,15 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
   const { data, error } = esToken(token) ? await createAdminClient().rpc("comite_datos", { p_token: token, p_mes: `${mes}-01` }) : { data: null, error: true };
   if (error || !data) return <p className="rounded-2xl bg-white p-6 text-sm">Este link ya no es válido. Pide el nuevo a la administración.</p>;
   const d = data as Resumen & { condominio: string; administradora: string; exporta: boolean };
+  // Indicadores operativos del mes elegido contra el mes anterior, y obras con cuota.
+  const desde = `${mes}-01T00:00:00-06:00`;
+  const hasta = `${mover(mes, 1)}-01T00:00:00-06:00`;
+  const [ind, obras] = await Promise.all([
+    createAdminClient().rpc("comite_indicadores", { p_token: token, p_desde: desde, p_hasta: hasta }),
+    createAdminClient().rpc("comite_obras", { p_token: token }),
+  ]);
+  const indicadores = ind.data as { actual: Indicadores; anterior: Indicadores } | null;
+  const listaObras = (obras.data ?? []) as Parameters<typeof ResumenObras>[0]["obras"];
   return (
     <>
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -60,6 +72,19 @@ async function Contenido({ params, searchParams }: { params: Promise<{ token: st
         </nav>
       </header>
       <ReporteCondominio r={d} />
+      {listaObras.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-2xl font-bold">Obras</h2>
+          <ResumenObras obras={listaObras} />
+        </section>
+      )}
+      {indicadores && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-2xl font-bold">Operación de caseta y reportes</h2>
+          <p className="text-sm text-gris">Comparado con el mes anterior. Verde = mejoró.</p>
+          <IndicadoresPiloto actual={indicadores.actual} anterior={indicadores.anterior} />
+        </section>
+      )}
       <p className="text-xs text-gris">Solo lectura. Las quejas privadas aparecen solo como número.</p>
     </>
   );

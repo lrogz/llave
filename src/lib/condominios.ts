@@ -23,7 +23,7 @@ export type DatosVecino = {
     estado: "activo" | "cancelado"; created_at: string;
   }[];
   accesos: { tipo: "entrada" | "salida"; visitante: string; metodo: string; ocurrio_at: string }[];
-  paquetes: { id: string; paqueteria: string | null; descripcion: string | null; recibido_at: string; entregado_a: string | null; entregado_at: string | null }[];
+  paquetes: { id: string; paqueteria: string | null; descripcion: string | null; recibido_at: string; entregado_a: string | null; entregado_at: string | null; ubicacion: string | null; entrega_metodo: string | null }[];
   avisos: { titulo: string; cuerpo: string; created_at: string; zona: string | null }[];
   chat: { lado: "residente" | "caseta"; texto: string; created_at: string }[];
   reportes: {
@@ -98,10 +98,11 @@ export type Amenidad = {
   id: string; nombre: string; tipo: string; descripcion: string | null; reglas: string | null; foto_path: string | null;
   modo: "turnos" | "solicitud"; capacidad: number; hora_abre: string; hora_cierra: string; duraciones: number[];
   renta_centavos: number; deposito_centavos: number; ocupacion: { inicio: string; fin: string; personas: number; estado: string }[];
+  inventario: string | null;
 };
 export type DatosAmenidades = {
   amenidades: Amenidad[];
-  reservas: { id: string; amenidad: string; inicio: string; fin: string; personas: number; estado: string; renta_centavos: number; deposito_centavos: number; deposito_estado: string | null; nota: string | null }[];
+  reservas: { id: string; amenidad: string; inicio: string; fin: string; personas: number; estado: string; renta_centavos: number; deposito_centavos: number; deposito_estado: string | null; nota: string | null; oferta_expira: string | null }[];
   mudanzas: { id: string; tipo: "entrada" | "salida"; inicio: string; fin: string; empresa: string; placa: string | null; recursos: string[]; estado: string; nota: string | null; pase_codigo: string | null }[];
 };
 
@@ -130,4 +131,52 @@ export async function comunidadVecino(token: string): Promise<DatosComunidad | n
   if (!esToken(token)) return null;
   const { data, error } = await createAdminClient().rpc("vecino_comunidad", { p_token: token });
   return error || !data ? null : (data as DatosComunidad);
+}
+
+// Datos de acceso de un pase (los mismos que ve la visita en su link).
+export type ContextoPase = {
+  folio: number | null; acceso: string | null; instrucciones: string | null; trabajo: string | null; recursos: string[] | null;
+  cajon: string | null; evento: string | null; tipo_visita: string;
+};
+export async function contextoPase(codigo: string): Promise<ContextoPase | null> {
+  const { data } = await createAdminClient().rpc("pase_publico", { p_codigo: codigo });
+  return (data as ContextoPase | null) ?? null;
+}
+
+async function rpcVecino<T>(fn: string, token: string): Promise<T | null> {
+  if (!esToken(token)) return null;
+  const { data, error } = await createAdminClient().rpc(fn, { p_token: token });
+  return error || data == null ? null : (data as T);
+}
+
+export type EventoVecino = {
+  id: string; nombre: string; inicio: string; fin: string; estado: string; instrucciones: string | null;
+  invitados: { id: string; nombre: string; codigo: string; folio: number; estado: string; usos: number; cajon: string | null }[];
+};
+export const eventosVecino = (token: string) => rpcVecino<EventoVecino[]>("vecino_eventos", token);
+
+export type RecogidasVecino = {
+  autorizaciones: { id: string; nombre: string; pin: string; token: string; paquete_id: string | null; expira: string; usado_at: string | null; revocado_at: string | null }[];
+  paquetes: { id: string; foto_path: string | null; ubicacion: string | null; entrega_foto_path: string | null; entrega_metodo: string | null }[];
+};
+export const recogidasVecino = (token: string) => rpcVecino<RecogidasVecino>("vecino_recogidas", token);
+
+export type IncidenteVecino = { titulo: string; estado: string; responsable: string | null; fecha_compromiso: string | null; afectados: number };
+export const incidentesVecino = (token: string) => rpcVecino<Record<string, IncidenteVecino>>("vecino_incidentes", token);
+
+export type Obra = {
+  id: string; nombre: string; descripcion: string | null; estado: string; aprobado_centavos: number; proveedor: string | null; asamblea: string | null;
+  cuota_cargada_centavos: number; recaudado_centavos: number; pagado_proveedor_centavos: number; avance_pct: number;
+  etapas: { id: string; nombre: string; monto_centavos: number; avance_pct: number; pagada: boolean }[];
+};
+export const obrasVecino = (token: string) => rpcVecino<Obra[]>("vecino_obras", token);
+
+export type ReglaAcceso = { motivo: string; max_horas: number | null; acceso: string | null; instrucciones: string | null; max_invitados: number | null; max_cajones: number };
+export async function reglaAcceso(token: string, motivo: string): Promise<ReglaAcceso | null> {
+  if (!esToken(token)) return null;
+  const db = createAdminClient();
+  const { data: r } = await db.from("residentes").select("condominio_id").eq("token", token).eq("activo", true).maybeSingle();
+  if (!r) return null;
+  const { data } = await db.from("reglas_acceso").select("motivo, max_horas, acceso, instrucciones, max_invitados, max_cajones").eq("condominio_id", r.condominio_id).eq("motivo", motivo).maybeSingle();
+  return (data as ReglaAcceso | null) ?? null;
 }

@@ -736,7 +736,7 @@ export async function Accesos({ ctx }: { ctx: Ctx }) {
 }
 
 // ─────────────────────────── Amenidades y mudanzas ───────────────────────────
-type Amen = { id: string; nombre: string; tipo: string; modo: string; capacidad: number; hora_abre: string; hora_cierra: string; duraciones: number[]; renta_centavos: number; deposito_centavos: number; descripcion: string | null; reglas: string | null; activo: boolean };
+type Amen = { id: string; nombre: string; tipo: string; modo: string; capacidad: number; hora_abre: string; hora_cierra: string; duraciones: number[]; renta_centavos: number; deposito_centavos: number; descripcion: string | null; reglas: string | null; activo: boolean; inventario?: string | null; minutos_oferta?: number };
 
 function FormAmenidad({ c, a }: { c: Ctx["c"]; a?: Amen }) {
   return (
@@ -788,7 +788,9 @@ function FormAmenidad({ c, a }: { c: Ctx["c"]; a?: Amen }) {
       <Etiqueta texto="Foto">
         <input name="foto" type="file" accept="image/*" className="text-sm" />
       </Etiqueta>
-      <span />
+      <Etiqueta texto="Minutos para confirmar lugar liberado">
+        <input name="minutos_oferta" type="number" min={10} max={2880} defaultValue={a?.minutos_oferta ?? 120} className={CAMPO} />
+      </Etiqueta>
       <label className="flex flex-col gap-1 text-sm font-semibold sm:col-span-2">
         Descripción
         <textarea name="descripcion" rows={2} defaultValue={a?.descripcion ?? ""} className={`${CAMPO} py-2`} />
@@ -796,6 +798,10 @@ function FormAmenidad({ c, a }: { c: Ctx["c"]; a?: Amen }) {
       <label className="flex flex-col gap-1 text-sm font-semibold sm:col-span-2">
         Reglas
         <textarea name="reglas" rows={2} defaultValue={a?.reglas ?? ""} className={`${CAMPO} py-2`} />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold sm:col-span-4">
+        Inventario que se revisa al entregar (sillas, mesas, bocina…)
+        <textarea name="inventario" rows={2} defaultValue={a?.inventario ?? ""} className={`${CAMPO} py-2`} />
       </label>
       <Boton className="sm:col-span-4">{a ? "Guardar cambios" : "Agregar amenidad"}</Boton>
     </form>

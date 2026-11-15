@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createHash } from "node:crypto";
 import { sesionConOrg } from "@/lib/sesion";
-import { avisarCondominio } from "@/lib/push";
+import { avisarCondominio, avisarVivienda } from "@/lib/push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { estadoPlan, puedeAgregar } from "@/lib/plan";
 import { BUCKET, MAX_ENVIO, extension } from "@/lib/datos";
@@ -47,6 +47,7 @@ export async function cargarEjemplo() {
   const { error } = await supabase.rpc("demo_condominios", { p_org: org.id });
   falla(error, "No pudimos cargar los ejemplos.");
   await supabase.rpc("demo_condominios_extra", { p_org: org.id });
+  await supabase.rpc("demo_condominios_piloto", { p_org: org.id });
   revalidatePath("/condominios");
   redirect("/condominios?ejemplo=1");
 }
@@ -293,6 +294,7 @@ export async function registrarGasto(f: FormData) {
     categoria: txt(f, "categoria", 40) || "Otro",
     descripcion,
     proveedor_id: esUuid(proveedor) ? proveedor : null,
+    equipo_id: esUuid(txt(f, "equipo_id", 40)) ? txt(f, "equipo_id", 40) : null,
     monto_centavos: monto,
     fecha: txt(f, "fecha", 10),
     comprobante_path: comprobante,
@@ -361,6 +363,8 @@ export async function guardarAmenidad(f: FormData) {
     deposito_centavos: aCentavos(txt(f, "deposito", 20)) ?? 0,
     descripcion: txt(f, "descripcion", 300) || null,
     reglas: txt(f, "reglas", 2000) || null,
+    inventario: txt(f, "inventario", 2000) || null,
+    minutos_oferta: Math.min(2880, Math.max(10, Number(txt(f, "minutos_oferta", 5)) || 120)),
     activo: f.get("activo") !== "off",
   };
   const foto = f.get("foto");
@@ -411,6 +415,7 @@ export async function seguimientoReporte(f: FormData) {
     fecha_compromiso: txt(f, "fecha_compromiso", 10) || null,
     resolucion: txt(f, "resolucion", 500) || null,
   };
+  if (f.has("equipo_id")) cambios.equipo_id = esUuid(txt(f, "equipo_id", 40)) ? txt(f, "equipo_id", 40) : null;
   if (f.get("cerrar") === "1") {
     if (!cambios.resolucion) throw new Error("Escribe qué se hizo para cerrar el reporte.");
     cambios.estado = "resuelto";
@@ -665,4 +670,182 @@ export async function conciliar(f: FormData) {
     falla(error, "No pudimos conciliar.");
   }
   revalidatePath(`/condominios/${c.id}`);
+}
+
+// ─────────────────────────── Piloto: reglas, cajones, incidentes, equipos y obras ───────────────────────────
+const MOTIVOS = ["visita", "fiesta", "mudanza", "servicio"];
+const entero = (f: FormData, k: string) => {
+  const v = txt(f, k, 6);
+  return v === "" ? null : Math.max(0, Math.round(Number(v))) || null;
+};
+
+export async function guardarRegla(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const motivo = txt(f, "motivo", 20);
+  if (!MOTIVOS.includes(motivo)) throw new Error("Tipo de pase no válido.");
+  const { error } = await supabase.from("reglas_acceso").upsert(
+    {
+      organizacion_id: c.organizacion_id,
+      condominio_id: c.id,
+      motivo,
+      max_horas: entero(f, "max_horas"),
+      hora_desde: txt(f, "hora_desde", 5) || null,
+      hora_hasta: txt(f, "hora_hasta", 5) || null,
+      acceso: txt(f, "acceso", 120) || null,
+      instrucciones: txt(f, "instrucciones", 500) || null,
+      max_invitados: motivo === "fiesta" ? entero(f, "max_invitados") : null,
+      max_cajones: Math.min(50, Number(txt(f, "max_cajones", 3)) || 0),
+    },
+    { onConflict: "condominio_id,motivo" },
+  );
+  falla(error, "Revisa la regla.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarCajones(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const quitar = txt(f, "quitar", 40);
+  if (esUuid(quitar)) {
+    const { error } = await supabase.from("cajones").update({ activo: false }).eq("id", quitar).eq("condominio_id", c.id);
+    falla(error, "No pudimos quitar el cajón.");
+  } else {
+    const nombres = txt(f, "nombres", 1000).split(/[\n,]+/).map((x) => x.trim().slice(0, 30)).filter(Boolean).slice(0, 100);
+    if (!nombres.length) throw new Error("Escribe los cajones (V-1, V-2…).");
+    const { error } = await supabase
+      .from("cajones")
+      .upsert(nombres.map((nombre) => ({ organizacion_id: c.organizacion_id, condominio_id: c.id, nombre, activo: true })), { onConflict: "condominio_id,nombre" });
+    falla(error, "No pudimos guardar los cajones.");
+  }
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function agruparReportes(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const tickets = f.getAll("ticket_id").map(String).filter(esUuid);
+  const inc = txt(f, "incidente_id", 40);
+  if (!tickets.length) throw new Error("Marca los reportes que son el mismo problema.");
+  const { error } = await supabase.rpc("agrupar_reportes", { p_condominio: c.id, p_tickets: tickets, p_incidente: esUuid(inc) ? inc : null, p_titulo: txt(f, "titulo", 120) || null });
+  falla(error, "No pudimos agrupar los reportes.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function desagruparReporte(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "ticket_id", 40);
+  if (!esUuid(id)) return;
+  const { error } = await supabase.rpc("desagrupar_reporte", { p_ticket: id });
+  falla(error, "No pudimos separar el reporte.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function avanceIncidente(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "incidente_id", 40);
+  if (!esUuid(id)) return;
+  const nota = txt(f, "nota", 500);
+  const estado = txt(f, "estado", 20);
+  const { data, error } = await supabase.rpc("publicar_avance_incidente", {
+    p_incidente: id,
+    p_nota: nota,
+    p_estado: estado,
+    p_responsable: txt(f, "responsable", 80) || null,
+    p_fecha: txt(f, "fecha_compromiso", 10) || null,
+  });
+  falla(error, "No pudimos publicar el avance.");
+  // Cada vivienda afectada recibe el aviso en su celular; nadie ve quién más reportó.
+  const viviendas = (data as string[] | null) ?? [];
+  const { data: inc } = await supabase.from("incidentes").select("titulo").eq("id", id).maybeSingle();
+  for (const v of viviendas)
+    avisarVivienda(v, (t) => ({ titulo: estado === "resuelto" ? `✅ Resuelto: ${inc?.titulo ?? "tu reporte"}` : `Avance: ${inc?.titulo ?? "tu reporte"}`, cuerpo: nota.slice(0, 140), url: `/vecino/${t}/reportes`, tag: `incidente-${id}` }));
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarEquipo(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const id = txt(f, "equipo_id", 40);
+  const prov = txt(f, "proveedor_id", 40);
+  const fila = {
+    nombre: txt(f, "nombre", 80),
+    tipo: txt(f, "tipo", 20) || "otro",
+    ubicacion: txt(f, "ubicacion", 120) || null,
+    marca: txt(f, "marca", 80) || null,
+    modelo: txt(f, "modelo", 80) || null,
+    serie: txt(f, "serie", 80) || null,
+    instalado: txt(f, "instalado", 10) || null,
+    garantia_hasta: txt(f, "garantia_hasta", 10) || null,
+    proveedor_id: esUuid(prov) ? prov : null,
+    notas: txt(f, "notas", 1000) || null,
+  };
+  const { error } = esUuid(id)
+    ? await supabase.from("equipos_condominio").update(fila).eq("id", id).eq("condominio_id", c.id)
+    : await supabase.from("equipos_condominio").insert({ ...fila, organizacion_id: c.organizacion_id, condominio_id: c.id });
+  falla(error, "Revisa los datos del equipo.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function guardarObra(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const presupuesto = aCentavos(txt(f, "presupuesto", 20));
+  if (!presupuesto) throw new Error("Escribe el presupuesto aprobado.");
+  const prov = txt(f, "proveedor_id", 40);
+  const asamblea = txt(f, "asamblea_id", 40);
+  const { data, error } = await supabase
+    .from("obras")
+    .insert({
+      organizacion_id: c.organizacion_id,
+      condominio_id: c.id,
+      nombre: txt(f, "nombre", 120),
+      descripcion: txt(f, "descripcion", 500) || null,
+      presupuesto_centavos: presupuesto,
+      proveedor_id: esUuid(prov) ? prov : null,
+      asamblea_id: esUuid(asamblea) ? asamblea : null,
+    })
+    .select("id")
+    .single();
+  falla(error, "Revisa los datos de la obra.");
+  // Etapas: "Anticipo 40%" o "Anticipo: 38400"
+  const etapas = txt(f, "etapas", 2000).split("\n").map((l) => l.trim()).filter(Boolean);
+  const filas = etapas.map((l, i) => {
+    const pct = l.match(/(\d+(?:\.\d+)?)\s*%\s*$/);
+    const monto = pct ? Math.round((presupuesto * Number(pct[1])) / 100) : aCentavos(l.split(/[:\s]+/).pop() ?? "");
+    return { organizacion_id: c.organizacion_id, condominio_id: c.id, obra_id: data!.id, orden: i + 1, nombre: l.replace(/[:\s]*\$?[\d.,]+\s*%?\s*$/, "").slice(0, 120) || `Etapa ${i + 1}`, monto_centavos: monto ?? 0 };
+  });
+  if (filas.some((x) => !x.monto_centavos)) throw new Error("Cada etapa necesita monto o porcentaje (ej. Anticipo 50%).");
+  if (filas.length) falla((await supabase.from("etapas_obra").insert(filas)).error, "No pudimos guardar las etapas.");
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function avanceEtapa(f: FormData) {
+  const { supabase, c, user } = await condominio(f);
+  const id = txt(f, "etapa_id", 40);
+  if (!esUuid(id)) return;
+  const { data: e } = await supabase.from("etapas_obra").select("id, nombre, monto_centavos, gasto_id, obra_id, obras(nombre, proveedor_id, estado)").eq("id", id).eq("condominio_id", c.id).maybeSingle();
+  if (!e) throw new Error("Etapa no encontrada.");
+  const cambios: Record<string, unknown> = { avance_pct: Math.min(100, Math.max(0, Number(txt(f, "avance", 3)) || 0)) };
+  if (f.get("pagar") === "1" && !e.gasto_id) {
+    const o = e.obras as unknown as { nombre: string; proveedor_id: string | null; estado: string };
+    const { data: g, error } = await supabase
+      .from("gastos_condominio")
+      .insert({ organizacion_id: c.organizacion_id, condominio_id: c.id, categoria: "Obra", descripcion: `${o.nombre} · ${e.nombre}`.slice(0, 300), proveedor_id: o.proveedor_id, monto_centavos: e.monto_centavos, fecha: new Date().toISOString().slice(0, 10), creado_por: user.email })
+      .select("id")
+      .single();
+    falla(error, "No pudimos registrar el pago.");
+    cambios.gasto_id = g!.id;
+  }
+  falla((await supabase.from("etapas_obra").update(cambios).eq("id", id)).error, "No pudimos guardar el avance.");
+  const { data: todas } = await supabase.from("etapas_obra").select("avance_pct").eq("obra_id", e.obra_id);
+  const estado = (todas ?? []).every((x) => x.avance_pct === 100) ? "terminada" : "en_curso";
+  await supabase.from("obras").update({ estado }).eq("id", e.obra_id);
+  revalidatePath(`/condominios/${c.id}`);
+}
+
+export async function cuotaObra(f: FormData) {
+  const { supabase, c } = await condominio(f);
+  const obra = txt(f, "obra_id", 40);
+  const total = aCentavos(txt(f, "total", 20));
+  if (!esUuid(obra) || !total) throw new Error("Escribe el total a recaudar.");
+  const { data, error } = await supabase.rpc("cargar_cuota_obra", { p_obra: obra, p_total_centavos: total, p_periodo: `${txt(f, "mes", 7)}-01`, p_vence: txt(f, "vence", 10) || null, p_por_indiviso: f.get("indiviso") === "on" });
+  falla(error, "No pudimos cargar la cuota.");
+  revalidatePath(`/condominios/${c.id}`);
+  redirect(ruta(c.id, "obras", `&cargados=${Number(data) || 0}`));
 }
